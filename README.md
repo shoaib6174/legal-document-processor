@@ -28,24 +28,37 @@ Built for the Pearson Specter Litt AI Engineer take-home assessment.
 
 1. **Clone and enter the repository:**
    ```bash
-   cd legal-doc-processor
+   git clone https://github.com/shoaib6174/legal-document-processor.git
+   cd legal-document-processor
    ```
 
 2. **Create and activate a virtual environment:**
    ```bash
    python -m venv .venv
+   # macOS/Linux:
    source .venv/bin/activate
+   # Windows:
+   # .venv\Scripts\activate
    ```
 
 3. **Install dependencies:**
    ```bash
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
 
 4. **Set your Groq API key:**
    ```bash
-   echo 'GROQ_API_KEY="your_key_here"' > .env
+   export GROQ_API_KEY="your_key_here"
+   # Or create a .env file (loaded automatically by the app):
+   echo "GROQ_API_KEY=your_key_here" > .env
    ```
+
+5. **Verify everything works:**
+   ```bash
+   pytest tests/ -v
+   ```
+   Expected: 40 tests pass with no external API calls.
 
 ## Running the Application
 
