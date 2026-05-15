@@ -35,18 +35,18 @@ class DocumentProcessor:
             re.IGNORECASE,
         )
         self.case_number_pattern = re.compile(
-            r"\b(?:Case|No\.|#)\s*[:\-]?\s*([A-Z]{2,4}[-\s]?\d{2,4}[-\s]?\d{1,6})\b",
+            r"\b(?:Case\s+(?:No\.?|number)|No\.|#)\s*[:\-]?\s*(\d{1,2}:\d{2}-[a-z]{2}-\d{4,5}|[A-Z]{2,4}[-\s]?\d{2,4}[-\s]?\d{1,6})\b",
             re.IGNORECASE,
         )
 
         # Legal-specific entity patterns
-        # Case citations: "Smith v. Jones, 123 F.3d 456 (9th Cir. 2024)" or "2024 WL 1234567"
+        # Case citations: "Smith v. Jones, 123 F.3d 456 (9th Cir. 2024)" or "Mercer v. Omega, 2024 WL 2847567"
         self.case_citation_pattern = re.compile(
-            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+v\.\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s+\d+\s+[A-Z]\.\d+[a-z]?\s+\d+(?:\s*\([^)]*\d{4}\))?|\d{4}\s+WL\s+\d+)\b"
+            r"\b([A-Z][a-zA-Z.]+(?:\s+[A-Z][a-zA-Z.]+)*\s+v\.\s+[A-Z][a-zA-Z.]+(?:\s+[A-Z][a-zA-Z.]+)*,\s+(?:\d+\s+[A-Z]\.\d+[a-z]?\s+\d+(?:\s*\([^)]*\d{4}\))?|\d+\s+WL\s+\d+)|(\d{4}\s+WL\s+\d+))\b"
         )
-        # Statute citations: "15 U.S.C. § 1" or "28 U.S.C. § 1331(a)" or "42 U.S.C. § 1983"
+        # Statute citations: "15 U.S.C. § 1", "815 ILCS 505/1", "28 U.S.C. § 1331(a)"
         self.statute_citation_pattern = re.compile(
-            r"\b(\d+)\s+U\.S\.C\.\s+§+\s*(\d+[a-z]?(?:\([^)]*\))?)",
+            r"(\d+)\s+(U\.S\.C\.|ILCS)\s+§*\s*(\d+[a-z]?(?:\([^)]*\))?)",
             re.IGNORECASE,
         )
         # Court names
@@ -422,7 +422,9 @@ class DocumentProcessor:
 
         # Case citations (e.g., "Smith v. Jones, 123 F.3d 456")
         for match in self.case_citation_pattern.finditer(raw_text):
-            val = match.group(1)
+            val = match.group(1) or match.group(2)
+            if not val:
+                continue
             key = ("case_citation", val)
             if key not in seen:
                 seen.add(key)
@@ -434,9 +436,10 @@ class DocumentProcessor:
                     )
                 )
 
-        # Statute citations (e.g., "15 U.S.C. § 1")
+        # Statute citations (e.g., "15 U.S.C. § 1", "815 ILCS 505/1")
         for match in self.statute_citation_pattern.finditer(raw_text):
-            val = f"{match.group(1)} U.S.C. § {match.group(2)}"
+            code_type = match.group(2)
+            val = f"{match.group(1)} {code_type} § {match.group(3)}"
             key = ("statute_citation", val)
             if key not in seen:
                 seen.add(key)
