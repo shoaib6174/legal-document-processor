@@ -16,9 +16,7 @@ const draftEditor = document.getElementById('draftEditor');
 const submitEditBtn = document.getElementById('submitEditBtn');
 const feedbackResult = document.getElementById('feedbackResult');
 const renderedDraft = document.getElementById('renderedDraft');
-const jsonEditorPanel = document.getElementById('jsonEditorPanel');
-const viewRenderedBtn = document.getElementById('viewRenderedBtn');
-const viewJsonBtn = document.getElementById('viewJsonBtn');
+const feedbackSection = document.getElementById('feedbackSection');
 const chunkModal = document.getElementById('chunkModal');
 const modalClose = document.getElementById('modalClose');
 const modalTitle = document.getElementById('modalTitle');
@@ -241,24 +239,6 @@ async function handleFile(file) {
     await generateDraft();
 }
 
-// View toggle
-function showDraftView(view) {
-    if (view === 'rendered') {
-        renderedDraft.classList.remove('hidden');
-        jsonEditorPanel.classList.add('hidden');
-        viewRenderedBtn.classList.add('active');
-        viewJsonBtn.classList.remove('active');
-    } else {
-        renderedDraft.classList.add('hidden');
-        jsonEditorPanel.classList.remove('hidden');
-        viewRenderedBtn.classList.remove('active');
-        viewJsonBtn.classList.add('active');
-    }
-}
-
-viewRenderedBtn.addEventListener('click', () => showDraftView('rendered'));
-viewJsonBtn.addEventListener('click', () => showDraftView('json'));
-
 async function generateDraft() {
     draftLoading.classList.remove('hidden');
     draftContent.classList.add('hidden');
@@ -291,10 +271,10 @@ async function generateDraft() {
         draftEditor.value = currentDraftRaw;
 
         // Show applied rules
-        const existingRules = draftSection.querySelector('.rules-banner');
+        const existingRules = renderedDraft.querySelector('.rules-banner');
         if (existingRules) existingRules.remove();
         if (data.rules_applied.length > 0) {
-            draftSection.insertAdjacentHTML('afterbegin', `
+            renderedDraft.insertAdjacentHTML('beforebegin', `
                 <div class="rules-banner" style="background:#e8f5e9;padding:10px;margin-bottom:10px;border-radius:4px;">
                     <strong>Applied correction rules:</strong>
                     <ul>${data.rules_applied.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
@@ -302,7 +282,8 @@ async function generateDraft() {
             `);
         }
 
-        showDraftView('rendered');
+        // Show feedback section
+        feedbackSection.classList.remove('hidden');
     } catch (err) {
         renderedDraft.innerHTML = `<div style="color:#c62828;padding:20px;">Error generating summary: ${escapeHtml(err.message)}</div>`;
     } finally {

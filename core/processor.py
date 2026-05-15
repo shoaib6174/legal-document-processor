@@ -39,19 +39,20 @@ class DocumentProcessor:
             re.IGNORECASE,
         )
 
-    def process(self, file_path: Path) -> ProcessedDocument:
+    def process(self, file_path: Path, source_doc: str | None = None) -> ProcessedDocument:
         """Process a document and return structured output."""
         file_path = Path(file_path)
         suffix = file_path.suffix.lower()
+        doc_name = source_doc or file_path.name
 
         if suffix == ".pdf":
-            raw_text, chunks = self._process_pdf(file_path)
+            raw_text, chunks = self._process_pdf(file_path, doc_name)
         elif suffix in (".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"):
-            raw_text, chunks = self._process_image(file_path)
+            raw_text, chunks = self._process_image(file_path, doc_name)
         else:
             # Fallback: try to read as text
             raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
-            chunks = self._chunk_text(raw_text, file_path.name, 1, 1.0)
+            chunks = self._chunk_text(raw_text, doc_name, 1, 1.0)
 
         entities = self._extract_entities(raw_text, chunks)
 
@@ -62,7 +63,7 @@ class DocumentProcessor:
             entities=entities,
         )
 
-    def _process_pdf(self, file_path: Path) -> Tuple[str, List[TextChunk]]:
+    def _process_pdf(self, file_path: Path, source_doc: str) -> Tuple[str, List[TextChunk]]:
         """Extract text from PDF. Uses native text if available, OCR fallback for scans."""
         doc = fitz.open(file_path)
         all_text_parts = []
@@ -77,7 +78,7 @@ class DocumentProcessor:
                 all_text_parts.append(text)
                 page_chunks = self._chunk_text(
                     text,
-                    source_doc=file_path.name,
+                    source_doc=source_doc,
                     page_num=page_num + 1,
                     confidence=1.0,
                 )
@@ -91,7 +92,7 @@ class DocumentProcessor:
                 all_text_parts.append(ocr_text)
                 page_chunks = self._chunk_text(
                     ocr_text,
-                    source_doc=file_path.name,
+                    source_doc=source_doc,
                     page_num=page_num + 1,
                     confidence=confidence,
                 )
@@ -100,14 +101,14 @@ class DocumentProcessor:
         doc.close()
         return "\n".join(all_text_parts), chunks
 
-    def _process_image(self, file_path: Path) -> Tuple[str, List[TextChunk]]:
+    def _process_image(self, file_path: Path, source_doc: str) -> Tuple[str, List[TextChunk]]:
         """Process a single image file with OCR."""
         img = Image.open(file_path)
         ocr_text = self._ocr_image(img)
         confidence = self._estimate_ocr_confidence(img)
         chunks = self._chunk_text(
             ocr_text,
-            source_doc=file_path.name,
+            source_doc=source_doc,
             page_num=1,
             confidence=confidence,
         )

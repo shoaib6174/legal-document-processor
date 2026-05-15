@@ -88,14 +88,18 @@ CRITICAL RULES:
 6. For parties, include only organizational entities (companies, corporations, LLCs). Do NOT include individual officers, attorneys, or signatories as parties.
 7. For claims, only include claims that are explicitly stated in the evidence. Do NOT infer claims.
 8. For dates, use only dates explicitly mentioned in the evidence. Do not infer or assume dates.
+9. document_summary: a 1-2 sentence description of what the document IS (e.g. "Employment agreement between..." or "Property dispute lawsuit filed by...").
+10. financial_summary: list ALL monetary amounts mentioned (fees, settlements, damages, salaries, etc.) with descriptions. Empty list if no money mentioned.
 
 Respond with a single valid JSON object matching this structure:
 {
+  "document_summary": "One or two sentences describing what the document is about.",
   "parties": [{"name": "...", "role": "..."}],
   "key_facts": [{"statement": "...", "supporting_evidence": ["chunk_id"]}],
   "dates": [{"date": "...", "event": "..."}],
   "claims": [{"description": "...", "supporting_evidence": ["chunk_id"]}],
-  "uncertainties": ["..."]
+  "uncertainties": ["..."],
+  "financial_summary": [{"amount": "$...", "description": "...", "supporting_evidence": ["chunk_id"]}]
 }"""
 
         few_shot = """
@@ -103,23 +107,27 @@ EXAMPLES:
 
 Good output:
 {
-  "parties": [{"name": "ACME INDUSTRIES LLC", "role": "provider"}],
+  "document_summary": "Employment agreement between ACME INDUSTRIES LLC and Dr. Amanda Park for a Senior VP role.",
+  "parties": [{"name": "ACME INDUSTRIES LLC", "role": "employer"}],
   "key_facts": [{"statement": "The agreement fee is $125,000.", "supporting_evidence": ["doc1_p1_c0"]}],
   "dates": [{"date": "March 15, 2024", "event": "Agreement signed"}],
   "claims": [],
-  "uncertainties": ["The exact scope of consulting services is unclear from the evidence."]
+  "uncertainties": ["The exact scope of consulting services is unclear from the evidence."],
+  "financial_summary": [{"amount": "$125,000", "description": "Annual consulting fee", "supporting_evidence": ["doc1_p1_c0"]}]
 }
 
 Bad output (missing citations):
 {
+  "document_summary": "",
   "parties": [{"name": "ACME LLC", "role": "provider"}],
   "key_facts": [{"statement": "The fee was negotiated down.", "supporting_evidence": []}],
   "dates": [{"date": "March 2024", "event": "Signing"}],
   "claims": [{"description": "Breach of contract", "supporting_evidence": []}],
-  "uncertainties": []
+  "uncertainties": [],
+  "financial_summary": []
 }
 
-The bad output is wrong because: (1) facts have no citations, (2) "Breach of contract" is inferred, not stated, (3) the date is vague."""
+The bad output is wrong because: (1) facts have no citations, (2) "Breach of contract" is inferred, not stated, (3) the date is vague, (4) missing document_summary and financial info."""
 
         parts = [base_prompt, few_shot]
 

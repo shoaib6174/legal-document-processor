@@ -42,7 +42,7 @@ async def upload_document(file: UploadFile = File(...)):
         tmp_path = Path(tmp.name)
 
     try:
-        doc = processor.process(tmp_path)
+        doc = processor.process(tmp_path, source_doc=file.filename)
         retriever.clear()
         retriever.index(doc.chunks)
 

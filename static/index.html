@@ -622,21 +622,27 @@
             <span>Generating summary from document...</span>
         </div>
         <div id="draftContent" class="hidden">
-            <div class="draft-controls">
-                <button class="view-toggle active" id="viewRenderedBtn" data-view="rendered">Rendered</button>
-                <button class="view-toggle" id="viewJsonBtn" data-view="json">Edit JSON</button>
-            </div>
             <div id="renderedDraft"></div>
-            <div id="jsonEditorPanel" class="hidden">
-                <div class="json-explanation">
-                    <strong>How feedback works:</strong> Edit the JSON below to correct facts, remove hallucinations, or fix citations. When you submit, the system compares your version to the original and learns rules to improve future drafts. For example, if you remove a party that's not a company, the system learns "only include organizational entities as parties."
-                </div>
-                <textarea id="draftEditor"></textarea>
-                <br>
-                <button id="submitEditBtn">Submit Edits</button>
-            </div>
-            <div id="feedbackResult"></div>
         </div>
+    </div>
+
+    <!-- Improve Summary -->
+    <div class="section hidden" id="feedbackSection">
+        <h2>3. Improve Summary</h2>
+        <div class="json-explanation">
+            <strong>How this works:</strong> The AI learns from your corrections. Edit the JSON below to fix facts, remove errors, or adjust citations. When you submit, the system compares your version to the original and extracts rules to improve future drafts.
+            <br><br>
+            <strong>Examples:</strong>
+            <ul>
+                <li>Remove a party that isn't a company → system learns "only include organizational entities as parties"</li>
+                <li>Change a date format → system learns "use ISO 8601 dates"</li>
+                <li>Add a missing amount → system learns "always include monetary values in financial_summary"</li>
+            </ul>
+        </div>
+        <textarea id="draftEditor"></textarea>
+        <br>
+        <button id="submitEditBtn">Submit Edits</button>
+        <div id="feedbackResult"></div>
     </div>
 
     <!-- Chunk Modal -->
