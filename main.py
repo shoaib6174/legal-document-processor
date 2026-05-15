@@ -56,6 +56,15 @@ async def upload_document(file: UploadFile = File(...)):
         return {
             "filename": file.filename,
             "chunks": len(doc.chunks),
+            "chunk_data": [
+                {
+                    "chunk_id": c.chunk_id,
+                    "text": c.text,
+                    "page_num": c.page_num,
+                    "confidence_score": c.confidence_score,
+                }
+                for c in doc.chunks
+            ],
             "entities": [
                 {"type": e.type, "value": e.value, "start": e.start, "end": e.end}
                 for e in doc.entities

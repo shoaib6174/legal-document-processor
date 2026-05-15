@@ -82,6 +82,60 @@
         }
         .extracted-panel h3 { margin-bottom: 15px; color: #333; }
 
+        /* Tabs */
+        .panel-tabs {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 12px;
+            background: #e0e0e0;
+            border-radius: 6px;
+            padding: 3px;
+        }
+        .panel-tab {
+            flex: 1;
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            color: #555;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 0;
+        }
+        .panel-tab.active {
+            background: white;
+            color: #333;
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .panel-tab:hover:not(.active) { background: rgba(255,255,255,0.5); }
+
+        /* Entity Badges */
+        .entity-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .entity-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .badge-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
         /* Entity Legend */
         .entity-legend {
             display: flex;
@@ -186,6 +240,58 @@
         .tag-party { background: #fff3e0; color: #ef6c00; }
         .tag-case_number { background: #f3e5f5; color: #6a1b9a; }
 
+        /* Chunks Panel */
+        .chunks-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .chunk-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 10px 12px;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .chunk-card:hover {
+            border-color: #1976d2;
+            box-shadow: 0 2px 6px rgba(25,118,210,0.15);
+        }
+        .chunk-card.highlighted {
+            border-color: #1976d2;
+            box-shadow: 0 0 0 2px rgba(25,118,210,0.2);
+        }
+        .chunk-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 11px;
+        }
+        .chunk-id {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #666;
+            font-weight: 600;
+        }
+        .chunk-meta {
+            color: #999;
+        }
+        .chunk-text {
+            font-size: 12px;
+            line-height: 1.5;
+            color: #333;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+        }
+        .chunk-confidence-high { color: #2e7d32; }
+        .chunk-confidence-medium { color: #ef6c00; }
+        .chunk-confidence-low { color: #c62828; }
+
         /* Case Summary */
         .case-summary {
             background: white;
@@ -261,6 +367,13 @@
             font-family: 'SF Mono', Monaco, monospace;
             margin-right: 4px;
             border: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .citation:hover {
+            background: #1976d2;
+            color: white;
+            border-color: #1976d2;
         }
         .uncertainty-list li {
             color: #856404;
@@ -279,10 +392,6 @@
             margin-bottom: 15px;
             align-items: center;
         }
-        .draft-controls label {
-            font-size: 13px;
-            color: #666;
-        }
         .view-toggle {
             background: #f5f5f5;
             color: #333;
@@ -295,6 +404,107 @@
             background: #1976d2;
             color: white;
         }
+
+        /* JSON Editor Explanation */
+        .json-explanation {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border-radius: 0 4px 4px 0;
+            font-size: 13px;
+            color: #333;
+            line-height: 1.5;
+        }
+        .json-explanation strong {
+            color: #1565c0;
+        }
+
+        /* Chunk Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .modal-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #666;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+        .modal-close:hover {
+            background: #f5f5f5;
+            color: #333;
+        }
+        .modal-body {
+            padding: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .modal-meta {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        /* Loading */
+        .loading-inline {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #666;
+            font-size: 14px;
+        }
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #e0e0e0;
+            border-top-color: #1976d2;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         /* Buttons */
         button {
@@ -313,7 +523,7 @@
 
         textarea {
             width: 100%;
-            min-height: 120px;
+            min-height: 200px;
             font-family: 'SF Mono', Monaco, monospace;
             font-size: 13px;
             padding: 10px;
@@ -329,7 +539,7 @@
             font-size: 13px;
         }
 
-        .hidden { display: none; }
+        .hidden { display: none !important; }
 
         .stats-bar {
             display: flex;
@@ -378,42 +588,69 @@
                 <h3>Extracted Information</h3>
                 <div id="statsBar" class="stats-bar"></div>
                 <div class="entity-legend" id="entityLegend"></div>
-                <div class="highlighted-text" id="highlightedText"></div>
-                <table class="entities-table" id="entitiesTable">
-                    <thead>
-                        <tr><th>Type</th><th>Value</th><th>Position</th></tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+                <div class="entity-badges" id="entityBadges"></div>
 
-    <!-- Generate -->
-    <div class="section hidden" id="generateSection">
-        <h2>2. Generate Draft</h2>
-        <button id="generateBtn">Generate Case Fact Summary</button>
-        <div id="evidenceSection" class="hidden">
-            <h3>Retrieved Evidence</h3>
-            <div id="evidenceList"></div>
+                <div class="panel-tabs">
+                    <button class="panel-tab active" data-tab="highlighted">Highlighted Text</button>
+                    <button class="panel-tab" data-tab="entities">Entities</button>
+                    <button class="panel-tab" data-tab="chunks">Chunks</button>
+                </div>
+
+                <div id="tabHighlighted" class="tab-content">
+                    <div class="highlighted-text" id="highlightedText"></div>
+                </div>
+                <div id="tabEntities" class="tab-content hidden">
+                    <table class="entities-table" id="entitiesTable">
+                        <thead>
+                            <tr><th>Type</th><th>Value</th><th>Position</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div id="tabChunks" class="tab-content hidden">
+                    <div class="chunks-panel" id="chunksPanel"></div>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Draft -->
     <div class="section hidden" id="draftSection">
-        <h2>3. Review & Edit Draft</h2>
-        <div class="draft-controls">
-            <button class="view-toggle active" id="viewRenderedBtn" data-view="rendered">Rendered</button>
-            <button class="view-toggle" id="viewJsonBtn" data-view="json">Edit JSON</button>
+        <h2>2. Case Fact Summary</h2>
+        <div id="draftLoading" class="loading-inline hidden">
+            <div class="spinner"></div>
+            <span>Generating summary from document...</span>
         </div>
-        <div id="renderedDraft"></div>
-        <div id="jsonEditorPanel" class="hidden">
-            <p style="font-size:13px;color:#666;margin-bottom:8px;">Edit the JSON below and submit to train the system:</p>
-            <textarea id="draftEditor"></textarea>
-            <br>
-            <button id="submitEditBtn">Submit Edits</button>
+        <div id="draftContent" class="hidden">
+            <div class="draft-controls">
+                <button class="view-toggle active" id="viewRenderedBtn" data-view="rendered">Rendered</button>
+                <button class="view-toggle" id="viewJsonBtn" data-view="json">Edit JSON</button>
+            </div>
+            <div id="renderedDraft"></div>
+            <div id="jsonEditorPanel" class="hidden">
+                <div class="json-explanation">
+                    <strong>How feedback works:</strong> Edit the JSON below to correct facts, remove hallucinations, or fix citations. When you submit, the system compares your version to the original and learns rules to improve future drafts. For example, if you remove a party that's not a company, the system learns "only include organizational entities as parties."
+                </div>
+                <textarea id="draftEditor"></textarea>
+                <br>
+                <button id="submitEditBtn">Submit Edits</button>
+            </div>
+            <div id="feedbackResult"></div>
         </div>
-        <div id="feedbackResult"></div>
+    </div>
+
+    <!-- Chunk Modal -->
+    <div class="modal-overlay" id="chunkModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Source Chunk</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-meta" id="modalMeta"></div>
+                <div id="modalText"></div>
+            </div>
+        </div>
     </div>
 
     <script src="/static/app.js"></script>
