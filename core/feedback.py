@@ -95,16 +95,18 @@ class FeedbackEngine:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT generalized_rule, rule_type, frequency, success_count, failure_count,
-                   JULIANDAY('now') - JULIANDAY(updated_at) as days_old
+            SELECT generalized_rule, MAX(frequency) as freq,
+                   MAX(success_count) as succ, MAX(failure_count) as fail,
+                   MAX(
+                       frequency *
+                       (1.0 + COALESCE(success_count, 0)) /
+                       (1.0 + COALESCE(success_count, 0) + COALESCE(failure_count, 0)) *
+                       EXP(-(JULIANDAY('now') - JULIANDAY(updated_at)) / 30.0)
+                   ) as score
             FROM corrections
             WHERE generalized_rule IS NOT NULL AND generalized_rule != ''
-            ORDER BY (
-                frequency *
-                (1.0 + COALESCE(success_count, 0)) /
-                (1.0 + COALESCE(success_count, 0) + COALESCE(failure_count, 0)) *
-                EXP(-(JULIANDAY('now') - JULIANDAY(updated_at)) / 30.0)
-            ) DESC
+            GROUP BY generalized_rule
+            ORDER BY score DESC
             LIMIT ?
             """,
             (limit,),
@@ -113,7 +115,7 @@ class FeedbackEngine:
         conn.close()
 
         rules = []
-        for generalized, rule_type, freq, success, failure, days_old in rows:
+        for generalized, freq, success, failure, score in rows:
             if generalized and self._is_valid_rule(generalized):
                 rules.append(generalized)
         return rules
