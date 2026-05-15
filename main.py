@@ -2,6 +2,9 @@ import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
