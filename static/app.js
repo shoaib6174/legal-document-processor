@@ -15,8 +15,13 @@ const draftSection = document.getElementById('draftSection');
 const draftEditor = document.getElementById('draftEditor');
 const submitEditBtn = document.getElementById('submitEditBtn');
 const feedbackResult = document.getElementById('feedbackResult');
+const renderedDraft = document.getElementById('renderedDraft');
+const jsonEditorPanel = document.getElementById('jsonEditorPanel');
+const viewRenderedBtn = document.getElementById('viewRenderedBtn');
+const viewJsonBtn = document.getElementById('viewJsonBtn');
 
 let currentDraft = null;
+let currentDraftRaw = null;
 let currentDocId = null;
 
 const ENTITY_COLORS = {
@@ -142,6 +147,24 @@ async function handleFile(file) {
     generateSection.classList.remove('hidden');
 }
 
+// View toggle
+function showDraftView(view) {
+    if (view === 'rendered') {
+        renderedDraft.classList.remove('hidden');
+        jsonEditorPanel.classList.add('hidden');
+        viewRenderedBtn.classList.add('active');
+        viewJsonBtn.classList.remove('active');
+    } else {
+        renderedDraft.classList.add('hidden');
+        jsonEditorPanel.classList.remove('hidden');
+        viewRenderedBtn.classList.remove('active');
+        viewJsonBtn.classList.add('active');
+    }
+}
+
+viewRenderedBtn.addEventListener('click', () => showDraftView('rendered'));
+viewJsonBtn.addEventListener('click', () => showDraftView('json'));
+
 // Generate
 generateBtn.addEventListener('click', async () => {
     generateBtn.disabled = true;
@@ -154,6 +177,7 @@ generateBtn.addEventListener('click', async () => {
     const data = await res.json();
 
     currentDraft = data.draft;
+    currentDraftRaw = JSON.stringify(data.draft, null, 2);
 
     // Show evidence
     evidenceSection.classList.remove('hidden');
@@ -164,19 +188,29 @@ generateBtn.addEventListener('click', async () => {
         </div>
     `).join('');
 
-    // Show draft editor
+    // Show draft section
     draftSection.classList.remove('hidden');
-    draftEditor.value = JSON.stringify(data.draft, null, 2);
 
-    // Show applied rules
+    // Render the readable HTML summary
+    renderedDraft.innerHTML = data.draft_html || `<pre>${escapeHtml(JSON.stringify(data.draft, null, 2))}</pre>`;
+
+    // Pre-populate JSON editor for feedback
+    draftEditor.value = currentDraftRaw;
+
+    // Show applied rules (insert before the controls)
+    const existingRules = draftSection.querySelector('.rules-banner');
+    if (existingRules) existingRules.remove();
     if (data.rules_applied.length > 0) {
         draftSection.insertAdjacentHTML('afterbegin', `
-            <div style="background:#e8f5e9;padding:10px;margin-bottom:10px;border-radius:4px;">
+            <div class="rules-banner" style="background:#e8f5e9;padding:10px;margin-bottom:10px;border-radius:4px;">
                 <strong>Applied correction rules:</strong>
                 <ul>${data.rules_applied.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
             </div>
         `);
     }
+
+    // Default to rendered view
+    showDraftView('rendered');
 
     generateBtn.disabled = false;
     generateBtn.textContent = 'Regenerate';

@@ -186,6 +186,116 @@
         .tag-party { background: #fff3e0; color: #ef6c00; }
         .tag-case_number { background: #f3e5f5; color: #6a1b9a; }
 
+        /* Case Summary */
+        .case-summary {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 24px;
+            line-height: 1.6;
+        }
+        .case-summary h2 {
+            margin: 0 0 20px 0;
+            font-size: 22px;
+            color: #333;
+            border-bottom: 2px solid #1976d2;
+            padding-bottom: 10px;
+        }
+        .case-summary h3 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #666;
+            margin: 24px 0 12px 0;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #eee;
+        }
+        .summary-section:first-of-type h3 { margin-top: 0; }
+        .party-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .party-badge {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .party-role {
+            background: #1565c0;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .date-list, .fact-list, .claim-list, .uncertainty-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .date-list li, .uncertainty-list li {
+            margin-bottom: 6px;
+            color: #444;
+        }
+        .fact-list li, .claim-list li {
+            margin-bottom: 12px;
+            color: #333;
+            padding-left: 4px;
+        }
+        .citations {
+            margin-top: 4px;
+        }
+        .citation {
+            display: inline-block;
+            background: #f5f5f5;
+            color: #666;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'SF Mono', Monaco, monospace;
+            margin-right: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .uncertainty-list li {
+            color: #856404;
+            background: #fff8e1;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border-left: 3px solid #ffc107;
+            list-style: none;
+            margin-left: -20px;
+        }
+
+        /* Draft Controls */
+        .draft-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        .draft-controls label {
+            font-size: 13px;
+            color: #666;
+        }
+        .view-toggle {
+            background: #f5f5f5;
+            color: #333;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .view-toggle:hover { background: #e0e0e0; }
+        .view-toggle.active {
+            background: #1976d2;
+            color: white;
+        }
+
         /* Buttons */
         button {
             padding: 10px 20px;
@@ -292,10 +402,17 @@
     <!-- Draft -->
     <div class="section hidden" id="draftSection">
         <h2>3. Review & Edit Draft</h2>
-        <p>Edit the JSON below and submit to train the system:</p>
-        <textarea id="draftEditor"></textarea>
-        <br>
-        <button id="submitEditBtn">Submit Edits</button>
+        <div class="draft-controls">
+            <button class="view-toggle active" id="viewRenderedBtn" data-view="rendered">Rendered</button>
+            <button class="view-toggle" id="viewJsonBtn" data-view="json">Edit JSON</button>
+        </div>
+        <div id="renderedDraft"></div>
+        <div id="jsonEditorPanel" class="hidden">
+            <p style="font-size:13px;color:#666;margin-bottom:8px;">Edit the JSON below and submit to train the system:</p>
+            <textarea id="draftEditor"></textarea>
+            <br>
+            <button id="submitEditBtn">Submit Edits</button>
+        </div>
         <div id="feedbackResult"></div>
     </div>
 

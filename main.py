@@ -88,6 +88,8 @@ async def generate_draft(query: str = Form("Generate a case fact summary")):
 
     return {
         "draft": draft.model_dump(),
+        "draft_html": draft.to_html(),
+        "draft_markdown": draft.to_markdown(),
         "evidence": [e.model_dump() for e in evidence],
         "rules_applied": rules,
     }

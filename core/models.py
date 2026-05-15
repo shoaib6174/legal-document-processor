@@ -78,3 +78,90 @@ class CaseFactSummary(BaseModel):
     dates: List[DateEvent]
     claims: List[Claim]
     uncertainties: List[str]
+
+    def to_html(self) -> str:
+        """Render a readable HTML summary from the structured data."""
+        parts = ['<div class="case-summary">']
+
+        # Title
+        parts.append('<h2>Case Fact Summary</h2>')
+
+        # Parties
+        if self.parties:
+            parts.append('<section class="summary-section"><h3>Parties</h3><div class="party-list">')
+            for p in self.parties:
+                role = f'<span class="party-role">{p.role}</span>' if p.role else ''
+                parts.append(f'<div class="party-badge">{p.name}{role}</div>')
+            parts.append('</div></section>')
+
+        # Dates
+        if self.dates:
+            parts.append('<section class="summary-section"><h3>Key Dates</h3><ul class="date-list">')
+            for d in self.dates:
+                parts.append(f'<li><strong>{d.date}</strong> — {d.event}</li>')
+            parts.append('</ul></section>')
+
+        # Key Facts
+        if self.key_facts:
+            parts.append('<section class="summary-section"><h3>Key Facts</h3><ol class="fact-list">')
+            for f in self.key_facts:
+                citations = ''.join(f'<span class="citation">{c}</span>' for c in f.supporting_evidence)
+                parts.append(f'<li>{f.statement}<div class="citations">{citations}</div></li>')
+            parts.append('</ol></section>')
+
+        # Claims
+        if self.claims:
+            parts.append('<section class="summary-section"><h3>Claims</h3><ol class="claim-list">')
+            for c in self.claims:
+                citations = ''.join(f'<span class="citation">{ev}</span>' for ev in c.supporting_evidence)
+                parts.append(f'<li>{c.description}<div class="citations">{citations}</div></li>')
+            parts.append('</ol></section>')
+
+        # Uncertainties
+        if self.uncertainties:
+            parts.append('<section class="summary-section"><h3>Uncertainties</h3><ul class="uncertainty-list">')
+            for u in self.uncertainties:
+                parts.append(f'<li>{u}</li>')
+            parts.append('</ul></section>')
+
+        parts.append('</div>')
+        return '\n'.join(parts)
+
+    def to_markdown(self) -> str:
+        """Render a readable Markdown summary for copy/paste."""
+        lines = ['# Case Fact Summary\n']
+
+        if self.parties:
+            lines.append('## Parties')
+            for p in self.parties:
+                role = f' ({p.role})' if p.role else ''
+                lines.append(f'- **{p.name}**{role}')
+            lines.append('')
+
+        if self.dates:
+            lines.append('## Key Dates')
+            for d in self.dates:
+                lines.append(f'- **{d.date}** — {d.event}')
+            lines.append('')
+
+        if self.key_facts:
+            lines.append('## Key Facts')
+            for i, f in enumerate(self.key_facts, 1):
+                cites = ', '.join(f.supporting_evidence)
+                lines.append(f'{i}. {f.statement}  `[{cites}]`')
+            lines.append('')
+
+        if self.claims:
+            lines.append('## Claims')
+            for i, c in enumerate(self.claims, 1):
+                cites = ', '.join(c.supporting_evidence)
+                lines.append(f'{i}. {c.description}  `[{cites}]`')
+            lines.append('')
+
+        if self.uncertainties:
+            lines.append('## Uncertainties')
+            for u in self.uncertainties:
+                lines.append(f'- {u}')
+            lines.append('')
+
+        return '\n'.join(lines)
