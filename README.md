@@ -4,7 +4,7 @@ A pipeline for ingesting messy legal documents, extracting structured informatio
 
 Built for the Pearson Specter Litt AI Engineer take-home assessment.
 
-> **Architecture Cover Photo:** Open [`docs/architecture-cover.html`](docs/architecture-cover.html) in any browser for a visual overview of the 6-stage pipeline. No build step required.
+![Technical Architecture](docs/screenshots/architecture-cover.png)
 
 ## What It Does
 
