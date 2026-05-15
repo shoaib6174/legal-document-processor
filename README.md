@@ -5,8 +5,6 @@ A pipeline for ingesting messy legal documents, extracting structured informatio
 Built for the Pearson Specter Litt AI Engineer take-home assessment.
 
 > **Architecture Cover Photo:** Open [`docs/architecture-cover.html`](docs/architecture-cover.html) in any browser for a visual overview of the 6-stage pipeline. No build step required.
->
-> **Edit Session Demo:** See [`docs/EDIT_SESSION.md`](docs/EDIT_SESSION.md) for a concrete walkthrough of the feedback loop — from initial draft to operator edits to learned rules.
 
 ## What It Does
 
@@ -160,49 +158,43 @@ Creates clean-text and scanned/image PDFs in `evaluation/synthetic_docs/` for ma
 |---|---|---|---|
 | ![Initial](docs/screenshots/ui_initial.png) | ![After Upload](docs/screenshots/ui_after_upload.png) | ![Full](docs/screenshots/ui_full.png) | ![Final](docs/screenshots/ui_final.png) |
 
+## Edit Session Demo
+
+The feedback loop is the system's learning engine. Here is a concrete walkthrough of how operator edits become reusable correction rules:
+
+**Document:** `complex_litigation_clean.pdf` — Stipulation and Settlement Agreement
+
+**Issues in initial draft:**
+- Missing plaintiff (Alexander Mercer)
+- Missing settlement amounts ($3.25M, $875K)
+- Missing court opinion date (June 3, 2024)
+- Missing claims (breach of contract, fraudulent misrepresentation)
+
+**Operator edits** the JSON inline in the web UI, then submits.
+
+**System response:**
+```json
+{
+  "status": "success",
+  "rules_learned": 3,
+  "total_diffs": 5,
+  "active_rules": [
+    "Do not include facts without supporting evidence citations...",
+    "Do not generate content without strong supporting evidence...",
+    "Verify that every fact and claim cites evidence chunks that actually support the stated content..."
+  ]
+}
+```
+
+These rules are stored in SQLite with frequency counters and effectiveness scores. On the next document generation, the top 3 rules by confidence are injected into the LLM system prompt as **CORRECTION RULES**, reducing the likelihood of the same errors.
+
+See the full walkthrough in [`docs/EDIT_SESSION.md`](docs/EDIT_SESSION.md).
+
 ## Architecture Overview
 
-The system follows a 5-stage pipeline:
+![Technical Architecture](docs/screenshots/architecture-cover.png)
 
-```
-Upload (PDF/Image)
-    │
-    ▼
-┌─────────────────┐
-│ 1. PROCESS      │──▶ OCR + regex structuring ──▶ raw_text + chunks + entities
-│   (processor)   │     Sentence-aware chunking, deskewing, 8 entity types
-└─────────────────┘
-    │
-    ▼
-┌─────────────────┐
-│ 2. INDEX        │──▶ Embed chunks ──▶ ChromaDB + BM25
-│   (retriever)   │     Metadata: source_doc, page_num, confidence_score
-└─────────────────┘
-    │
-    ▼ (Auto-triggered after upload)
-┌─────────────────┐
-│ 3. RETRIEVE     │──▶ Hybrid dense + sparse search ──▶ RRF fusion
-│   (retriever)   │     Legal query expansion, per-chunk retrieval method tracking
-└─────────────────┘
-    │
-    ▼
-┌─────────────────┐
-│ 4. GENERATE     │──▶ Two-stage: analyze evidence, then generate structured output
-│   (generator)   │     Correction rules injection, JSON schema enforcement
-└─────────────────┘
-    │
-    ▼
-┌─────────────────┐
-│ 5. VERIFY       │──▶ Semantic grounding check ──▶ Ungrounded facts → uncertainties
-│   (grounding)   │
-└─────────────────┘
-    │
-    ▼
-┌─────────────────┐
-│ 6. LEARN        │──▶ Diff original vs edited ──▶ Extract rules, score effectiveness
-│   (feedback)    │     SQLite storage; top rules injected into future prompts
-└─────────────────┘
-```
+The system follows a 6-stage pipeline: **Process** → **Index** → **Retrieve** → **Generate** → **Verify** → **Learn**. Each stage is implemented as a dedicated module in `core/` with clear responsibilities and data contracts.
 
 See `ARCHITECTURE.md` for detailed tradeoffs, assumptions, and rubric alignment.
 
