@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Document Processor</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: 8px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 6px; }
+        #dropzone { border: 2px dashed #999; padding: 40px; text-align: center; cursor: pointer; }
+        #dropzone.dragover { background: #f0f0f0; }
+        textarea { width: 100%; min-height: 120px; font-family: monospace; }
+        button { padding: 10px 20px; cursor: pointer; margin: 5px 5px 5px 0; }
+        .evidence { background: #f5f5f5; padding: 10px; margin: 8px 0; border-radius: 4px; }
+        .hidden { display: none; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Legal Document Processor</h1>
+
+    <div class="section">
+        <h2>1. Upload Document</h2>
+        <div id="dropzone">Drag & drop a PDF or image here, or click to select</div>
+        <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg" class="hidden">
+        <div id="uploadResult"></div>
+    </div>
+
+    <div class="section hidden" id="generateSection">
+        <h2>2. Generate Draft</h2>
+        <button id="generateBtn">Generate Case Fact Summary</button>
+        <div id="evidenceSection" class="hidden">
+            <h3>Retrieved Evidence</h3>
+            <div id="evidenceList"></div>
+        </div>
+    </div>
+
+    <div class="section hidden" id="draftSection">
+        <h2>3. Review & Edit Draft</h2>
+        <p>Edit the JSON below and submit to train the system:</p>
+        <textarea id="draftEditor"></textarea>
+        <br>
+        <button id="submitEditBtn">Submit Edits</button>
+        <div id="feedbackResult"></div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
