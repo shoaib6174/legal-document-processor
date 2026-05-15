@@ -22,18 +22,25 @@ const modalClose = document.getElementById('modalClose');
 const modalTitle = document.getElementById('modalTitle');
 const modalMeta = document.getElementById('modalMeta');
 const modalText = document.getElementById('modalText');
+const structuredEditor = document.getElementById('structuredEditor');
+const draftEditor = document.getElementById('draftEditor');
 
 let currentDraft = null;
 let currentDraftRaw = null;
 let currentDocId = null;
 let currentChunks = [];
 let currentEvidence = [];
+let editorMode = 'visual';
 
 const ENTITY_COLORS = {
     date: { bg: '#e3f2fd', text: '#1565c0', label: 'Date' },
     amount: { bg: '#e8f5e9', text: '#2e7d32', label: 'Amount' },
     party: { bg: '#fff3e0', text: '#ef6c00', label: 'Party' },
-    case_number: { bg: '#f3e5f5', text: '#6a1b9a', label: 'Case #' }
+    case_number: { bg: '#f3e5f5', text: '#6a1b9a', label: 'Case #' },
+    case_citation: { bg: '#fce4ec', text: '#c62828', label: 'Case Cite' },
+    statute_citation: { bg: '#e0f7fa', text: '#006064', label: 'Statute' },
+    court_name: { bg: '#f1f8e9', text: '#33691e', label: 'Court' },
+    judge_name: { bg: '#fff8e1', text: '#795548', label: 'Judge' }
 };
 
 // Upload
@@ -273,8 +280,9 @@ async function generateDraft() {
         renderedDraft.innerHTML = data.draft_html || `<pre>${escapeHtml(JSON.stringify(data.draft, null, 2))}</pre>`;
         wireCitations();
 
-        // Pre-populate JSON editor for feedback
+        // Pre-populate editors for feedback
         draftEditor.value = currentDraftRaw;
+        buildStructuredEditor(data.draft);
 
         // Show grounding score banner
         const existingGrounding = draftSection.querySelector('.grounding-banner');
@@ -312,10 +320,264 @@ async function generateDraft() {
     }
 }
 
+// ── Structured Editor ───────────────────────────────────────────────
+
+function buildStructuredEditor(draft) {
+    structuredEditor.innerHTML = '';
+
+    // Document Summary
+    const summarySection = document.createElement('div');
+    summarySection.className = 'editor-section';
+    summarySection.innerHTML = `
+        <div class="editor-section-header">
+            <span class="editor-section-title">Document Summary</span>
+        </div>
+        <div class="editor-field">
+            <textarea class="editor-input editor-textarea" data-field="document_summary" placeholder="Describe what the document is...">${escapeHtml(draft.document_summary || '')}</textarea>
+        </div>
+    `;
+    structuredEditor.appendChild(summarySection);
+
+    // Parties
+    structuredEditor.appendChild(buildArraySection('Parties', 'parties', draft.parties || [], [
+        { key: 'name', label: 'Name', type: 'text' },
+        { key: 'role', label: 'Role', type: 'text' }
+    ]));
+
+    // Key Facts
+    structuredEditor.appendChild(buildArraySection('Key Facts', 'key_facts', draft.key_facts || [], [
+        { key: 'statement', label: 'Statement', type: 'textarea' },
+        { key: 'supporting_evidence', label: 'Citations (comma-separated)', type: 'text' }
+    ]));
+
+    // Dates
+    structuredEditor.appendChild(buildArraySection('Dates', 'dates', draft.dates || [], [
+        { key: 'date', label: 'Date', type: 'text' },
+        { key: 'event', label: 'Event', type: 'text' }
+    ]));
+
+    // Claims
+    structuredEditor.appendChild(buildArraySection('Claims', 'claims', draft.claims || [], [
+        { key: 'description', label: 'Description', type: 'textarea' },
+        { key: 'supporting_evidence', label: 'Citations (comma-separated)', type: 'text' }
+    ]));
+
+    // Financial Summary
+    structuredEditor.appendChild(buildArraySection('Financial Summary', 'financial_summary', draft.financial_summary || [], [
+        { key: 'amount', label: 'Amount', type: 'text' },
+        { key: 'description', label: 'Description', type: 'textarea' },
+        { key: 'supporting_evidence', label: 'Citations (comma-separated)', type: 'text' }
+    ]));
+
+    // Uncertainties
+    const uncSection = document.createElement('div');
+    uncSection.className = 'editor-section';
+    uncSection.dataset.section = 'uncertainties';
+    uncSection.innerHTML = `
+        <div class="editor-section-header">
+            <span class="editor-section-title">Uncertainties</span>
+            <button class="editor-add-btn" onclick="addItem('uncertainties')">+ Add</button>
+        </div>
+        <div class="editor-items">
+            ${(draft.uncertainties || []).length === 0 ? '<div class="editor-empty">No uncertainties</div>' : ''}
+            ${(draft.uncertainties || []).map((u, i) => `
+                <div class="editor-item" data-index="${i}">
+                    <button class="editor-remove-btn" onclick="removeItem('uncertainties', ${i})">Remove</button>
+                    <div class="editor-field">
+                        <textarea class="editor-input editor-textarea" data-key="text" placeholder="Uncertainty...">${escapeHtml(u)}</textarea>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    structuredEditor.appendChild(uncSection);
+}
+
+function buildArraySection(title, sectionKey, items, fields) {
+    const section = document.createElement('div');
+    section.className = 'editor-section';
+    section.dataset.section = sectionKey;
+    section.innerHTML = `
+        <div class="editor-section-header">
+            <span class="editor-section-title">${title}</span>
+            <button class="editor-add-btn" onclick="addItem('${sectionKey}')">+ Add</button>
+        </div>
+        <div class="editor-items">
+            ${items.length === 0 ? '<div class="editor-empty">No items</div>' : ''}
+            ${items.map((item, i) => `
+                <div class="editor-item" data-index="${i}">
+                    <button class="editor-remove-btn" onclick="removeItem('${sectionKey}', ${i})">Remove</button>
+                    ${fields.map(f => `
+                        <div class="editor-field">
+                            <label class="editor-label">${f.label}</label>
+                            ${f.type === 'textarea'
+                                ? `<textarea class="editor-input editor-textarea" data-key="${f.key}" placeholder="${f.label}...">${escapeHtml(item[f.key] || '')}</textarea>`
+                                : `<input type="text" class="editor-input" data-key="${f.key}" value="${escapeHtml(Array.isArray(item[f.key]) ? (item[f.key] || []).join(', ') : (item[f.key] || ''))}" placeholder="${f.label}...">`
+                            }
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('')}
+        </div>
+    `;
+    return section;
+}
+
+function addItem(section) {
+    const secEl = structuredEditor.querySelector(`.editor-section[data-section="${section}"]`);
+    const itemsEl = secEl.querySelector('.editor-items');
+    const emptyEl = itemsEl.querySelector('.editor-empty');
+    if (emptyEl) emptyEl.remove();
+
+    const count = itemsEl.querySelectorAll('.editor-item').length;
+
+    let html = '';
+    if (section === 'uncertainties') {
+        html = `
+            <div class="editor-item" data-index="${count}">
+                <button class="editor-remove-btn" onclick="removeItem('uncertainties', ${count})">Remove</button>
+                <div class="editor-field">
+                    <textarea class="editor-input editor-textarea" data-key="text" placeholder="Uncertainty..."></textarea>
+                </div>
+            </div>
+        `;
+    } else {
+        const fieldMap = {
+            parties: [
+                { key: 'name', label: 'Name', type: 'text' },
+                { key: 'role', label: 'Role', type: 'text' }
+            ],
+            key_facts: [
+                { key: 'statement', label: 'Statement', type: 'textarea' },
+                { key: 'supporting_evidence', label: 'Citations (comma-separated)', type: 'text' }
+            ],
+            dates: [
+                { key: 'date', label: 'Date', type: 'text' },
+                { key: 'event', label: 'Event', type: 'text' }
+            ],
+            claims: [
+                { key: 'description', label: 'Description', type: 'textarea' },
+                { key: 'supporting_evidence', label: 'Citations (comma-separated)', type: 'text' }
+            ],
+            financial_summary: [
+                { key: 'amount', label: 'Amount', type: 'text' },
+                { key: 'description', label: 'Description', type: 'textarea' },
+                { key: 'supporting_evidence', label: 'Citations (comma-separated)', type: 'text' }
+            ]
+        };
+        const fields = fieldMap[section];
+        html = `
+            <div class="editor-item" data-index="${count}">
+                <button class="editor-remove-btn" onclick="removeItem('${section}', ${count})">Remove</button>
+                ${fields.map(f => `
+                    <div class="editor-field">
+                        <label class="editor-label">${f.label}</label>
+                        ${f.type === 'textarea'
+                            ? `<textarea class="editor-input editor-textarea" data-key="${f.key}" placeholder="${f.label}..."></textarea>`
+                            : `<input type="text" class="editor-input" data-key="${f.key}" placeholder="${f.label}...">`
+                        }
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    itemsEl.insertAdjacentHTML('beforeend', html);
+}
+
+function removeItem(section, index) {
+    const secEl = structuredEditor.querySelector(`.editor-section[data-section="${section}"]`);
+    const item = secEl.querySelector(`.editor-item[data-index="${index}"]`);
+    if (item) {
+        item.remove();
+        // Re-index remaining items
+        secEl.querySelectorAll('.editor-item').forEach((el, i) => {
+            el.dataset.index = i;
+            const btn = el.querySelector('.editor-remove-btn');
+            if (btn) btn.setAttribute('onclick', `removeItem('${section}', ${i})`);
+        });
+    }
+}
+
+function syncVisualToJson() {
+    const draft = { ...currentDraft };
+
+    // Document summary
+    const summaryInput = structuredEditor.querySelector('[data-field="document_summary"]');
+    if (summaryInput) draft.document_summary = summaryInput.value;
+
+    // Array sections
+    const arraySections = ['parties', 'key_facts', 'dates', 'claims', 'financial_summary'];
+    for (const section of arraySections) {
+        const secEl = structuredEditor.querySelector(`.editor-section[data-section="${section}"]`);
+        if (!secEl) continue;
+        const items = [];
+        secEl.querySelectorAll('.editor-item').forEach(itemEl => {
+            const obj = {};
+            itemEl.querySelectorAll('[data-key]').forEach(input => {
+                const key = input.dataset.key;
+                const val = input.value.trim();
+                if (key === 'supporting_evidence') {
+                    obj[key] = val ? val.split(',').map(s => s.trim()).filter(s => s) : [];
+                } else {
+                    obj[key] = val;
+                }
+            });
+            // Only add if at least one field has content
+            if (Object.values(obj).some(v => v && v.length > 0)) {
+                items.push(obj);
+            }
+        });
+        draft[section] = items;
+    }
+
+    // Uncertainties
+    const uncSec = structuredEditor.querySelector('.editor-section[data-section="uncertainties"]');
+    if (uncSec) {
+        const uncertainties = [];
+        uncSec.querySelectorAll('.editor-item [data-key="text"]').forEach(input => {
+            const val = input.value.trim();
+            if (val) uncertainties.push(val);
+        });
+        draft.uncertainties = uncertainties;
+    }
+
+    return draft;
+}
+
+function toggleEditor(mode) {
+    editorMode = mode;
+    document.querySelectorAll('.editor-toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+
+    if (mode === 'visual') {
+        structuredEditor.classList.remove('hidden');
+        draftEditor.classList.add('hidden');
+        // Sync from JSON textarea to visual
+        try {
+            const draft = JSON.parse(draftEditor.value);
+            buildStructuredEditor(draft);
+        } catch (e) {
+            // Invalid JSON, keep current visual
+        }
+    } else {
+        structuredEditor.classList.add('hidden');
+        draftEditor.classList.remove('hidden');
+        // Sync from visual to JSON
+        const draft = syncVisualToJson();
+        draftEditor.value = JSON.stringify(draft, null, 2);
+    }
+}
+
+// Editor toggle listeners
+document.querySelectorAll('.editor-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleEditor(btn.dataset.mode));
+});
+
 // Submit edits
 submitEditBtn.addEventListener('click', async () => {
     try {
-        const edited = JSON.parse(draftEditor.value);
+        const edited = editorMode === 'visual' ? syncVisualToJson() : JSON.parse(draftEditor.value);
         const formData = new FormData();
         formData.append('edited_draft', JSON.stringify(edited));
 

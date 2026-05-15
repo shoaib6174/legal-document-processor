@@ -432,6 +432,114 @@ Title: Chief Executive Officer
 Dr. Amanda Park
 """
 
+COMPLEX_LITIGATION = """STIPULATION AND SETTLEMENT AGREEMENT
+
+This Stipulation and Settlement Agreement (this "Agreement") is entered into as of October 14, 2024 (the "Settlement Date"), by and among:
+
+PLAINTIFF:
+
+ALEXANDER MERCER, an individual residing at 742 Evergreen Terrace, Springfield, Illinois 62704 ("Plaintiff");
+
+DEFENDANTS:
+
+OMEGA PHARMACEUTICALS INC., a Delaware corporation with its principal place of business at 1500 Market Street, Philadelphia, Pennsylvania 19102 ("Omega");
+
+and
+
+THETA DISTRIBUTION LLC, a Nevada limited liability company with its principal place of business at 3300 Las Vegas Boulevard, Las Vegas, Nevada 89109 ("Theta", and together with Omega, the "Defendants").
+
+Plaintiff and Defendants are collectively referred to as the "Parties."
+
+RECITALS
+
+WHEREAS, Plaintiff commenced an action against Defendants in the United States District Court for the Central District of Illinois, case number 3:24-cv-00421 (the "Action"), alleging claims for breach of contract, fraudulent misrepresentation, and violation of the Illinois Consumer Fraud and Deceptive Business Practices Act, 815 ILCS 505/1 et seq.;
+
+WHEREAS, the Honorable Judge Margaret Chen is presiding over the Action;
+
+WHEREAS, on June 3, 2024, this Court issued a Memorandum Opinion and Order in Mercer v. Omega Pharmaceuticals Inc., 2024 WL 2847561, granting in part and denying in part Defendants' motion to dismiss;
+
+WHEREAS, the Parties have engaged in extensive discovery, including the exchange of over 50,000 documents and depositions of key witnesses;
+
+WHEREAS, the Parties desire to settle the Action and all claims arising therefrom on the terms set forth herein;
+
+NOW, THEREFORE, in consideration of the mutual covenants and agreements contained herein, the Parties agree as follows:
+
+1. SETTLEMENT PAYMENTS
+
+1.1 Within 15 business days of the Effective Date, Omega shall pay to Plaintiff the sum of $3,250,000 by wire transfer to the account designated by Plaintiff's counsel.
+
+1.2 Within 15 business days of the Effective Date, Theta shall pay to Plaintiff the sum of $875,000 by wire transfer to the same account.
+
+1.3 Defendants shall jointly and severally pay all applicable employer payroll taxes, estimated to be $312,000.
+
+2. MUTUAL RELEASE OF CLAIMS
+
+2.1 Plaintiff, on behalf of himself and his heirs, executors, administrators, successors, and assigns, hereby releases and forever discharges Defendants and their respective officers, directors, employees, agents, insurers, attorneys, predecessors, successors, and assigns from any and all claims, demands, actions, causes of action, damages, and liabilities of any kind whatsoever, whether known or unknown, arising out of or relating to the claims asserted in the Action.
+
+2.2 Defendants, on behalf of themselves and their respective successors and assigns, hereby release and forever discharge Plaintiff from any and all claims arising out of or relating to the subject matter of the Action.
+
+3. DISMISSAL OF ACTION
+
+3.1 Within 5 business days of receipt of the settlement payments, Plaintiff shall file with the Court a stipulation of dismissal with prejudice of the Action.
+
+3.2 The Parties shall bear their own attorneys' fees and costs, except as provided in Section 4.
+
+4. ATTORNEYS' FEES AND COSTS
+
+4.1 In addition to the settlement payments, Defendants shall pay $425,000 to the Law Firm of Harrison & Doyle LLP, Plaintiff's counsel, in full satisfaction of all attorneys' fees and costs.
+
+5. NON-DISPARAGEMENT
+
+5.1 The Parties agree that neither they nor their respective agents, attorneys, or representatives shall make any disparaging remarks about the other Party.
+
+5.2 This non-disparagement obligation shall survive the termination of this Agreement for a period of ten years.
+
+6. CONFIDENTIALITY
+
+6.1 The Parties agree that the terms of this Agreement, including the settlement amounts, shall be kept strictly confidential.
+
+6.2 Notwithstanding the foregoing, the Parties may disclose the terms of this Agreement to: (a) their attorneys, accountants, and financial advisors; (b) as required by law or court order; and (c) in confidence to immediate family members.
+
+7. NON-ADMISSION
+
+7.1 This Agreement constitutes a compromise of disputed claims. Nothing in this Agreement shall be construed as an admission by Defendants of any liability, wrongdoing, or violation of law.
+
+8. GOVERNING LAW
+
+8.1 This Agreement shall be governed by and construed in accordance with the laws of the State of Illinois, without regard to conflicts of law principles.
+
+9. ENTIRE AGREEMENT
+
+9.1 This Agreement constitutes the entire agreement between the Parties with respect to the subject matter hereof and supersedes all prior negotiations, understandings, and agreements.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the Settlement Date.
+
+___________________________
+Alexander Mercer
+
+___________________________
+Victor Holloway
+Chief Executive Officer
+Omega Pharmaceuticals Inc.
+
+___________________________
+Diana Ross
+Managing Member
+Theta Distribution LLC
+
+ACKNOWLEDGED AND AGREED:
+
+___________________________
+Samuel Harrison, Esq.
+Harrison & Doyle LLP
+Counsel for Plaintiff
+
+___________________________
+Jennifer Walsh, Esq.
+Walsh & Brennan LLP
+Counsel for Defendants
+"""
+
 DISCOVERY_REQUEST = """FIRST SET OF INTERROGATORIES AND REQUESTS FOR PRODUCTION
 
 TO: DEFENDANT PACIFIC SHIPPING CORPORATION
@@ -530,6 +638,7 @@ TEMPLATES = {
     "settlement_agreement": SETTLEMENT_AGREEMENT,
     "employment_agreement": EMPLOYMENT_AGREEMENT,
     "discovery_request": DISCOVERY_REQUEST,
+    "complex_litigation": COMPLEX_LITIGATION,
 }
 
 # Metadata for each template
@@ -588,6 +697,23 @@ def get_template_info():
                 "courts": ["Superior Court of California, County of Los Angeles"],
                 "law_firms": ["Walsh & Brennan LLP"],
                 "statutes": ["Code of Civil Procedure section 2030.010", "Code of Civil Procedure section 2031.010"],
+            },
+        },
+        "complex_litigation": {
+            "type": "settlement",
+            "pages_estimate": 4,
+            "word_count": len(COMPLEX_LITIGATION.split()),
+            "entities": {
+                "parties": ["OMEGA PHARMACEUTICALS INC.", "THETA DISTRIBUTION LLC"],
+                "individuals": ["Alexander Mercer", "Victor Holloway", "Diana Ross", "Samuel Harrison", "Jennifer Walsh"],
+                "amounts": ["$3,250,000", "$875,000", "$312,000", "$425,000"],
+                "dates": ["October 14, 2024", "June 3, 2024"],
+                "case_numbers": ["3:24-cv-00421"],
+                "case_citations": ["Mercer v. Omega Pharmaceuticals Inc., 2024 WL 2847561"],
+                "statutes": ["815 ILCS 505/1"],
+                "courts": ["United States District Court for the Central District of Illinois"],
+                "judges": ["Hon. Judge Margaret Chen"],
+                "law_firms": ["Harrison & Doyle LLP", "Walsh & Brennan LLP"],
             },
         },
     }

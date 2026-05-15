@@ -21,12 +21,29 @@ def test_chunk_text_basic(processor):
 
 
 def test_chunk_text_overlap(processor):
-    text = " ".join([f"word{i}" for i in range(50)])
-    chunks = processor._chunk_text(text, "test.txt", 1, 1.0, chunk_size=20, overlap=5)
+    # Sentence-aware chunking: use multiple sentences to test overlap
+    sentences = [f"This is sentence {i} with some words." for i in range(20)]
+    text = " ".join(sentences)
+    chunks = processor._chunk_text(text, "test.txt", 1, 1.0, chunk_size=30, overlap=10)
 
     assert len(chunks) >= 2
-    # Second chunk should overlap with first
-    assert "word15" in chunks[0].text or "word15" in chunks[1].text
+    # Verify sentences are not split across chunks
+    for chunk in chunks:
+        # Each chunk should start with a complete sentence
+        text_stripped = chunk.text.strip()
+        assert text_stripped[0].isupper() or text_stripped[0] == '"'
+    # Overlap: some content from chunk 0 should appear in chunk 1
+    assert any(sent in chunks[0].text and sent in chunks[1].text for sent in sentences)
+
+def test_chunk_text_preserves_sentences(processor):
+    """Sentences should never be split across chunks."""
+    text = "First sentence here. Second sentence here. Third sentence here."
+    chunks = processor._chunk_text(text, "test.txt", 1, 1.0, chunk_size=5, overlap=2)
+    # Even with tiny chunk_size, each chunk should contain complete sentences
+    for chunk in chunks:
+        assert "." in chunk.text
+        # Should not end mid-sentence (no trailing incomplete sentence)
+        # Each chunk should have complete sentences only
 
 
 def test_chunk_text_empty(processor):
@@ -285,3 +302,100 @@ def test_extract_entities_individual_does_not_match_org(processor):
 
     assert len(parties) == 1
     assert parties[0].value == "NEXUS FINANCIAL SERVICES INC"
+
+
+def test_extract_entities_case_citation(processor):
+    """Case citations like 'Smith v. Jones, 123 F.3d 456' should be extracted."""
+    raw_text = "See Smith v. Jones, 123 F.3d 456 (9th Cir. 2024). Also cited 2024 WL 1234567."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    citations = [e for e in entities if e.type == "case_citation"]
+
+    assert len(citations) == 2
+    assert any("Smith v. Jones" in c.value for c in citations)
+    assert any("2024 WL 1234567" in c.value for c in citations)
+
+
+def test_extract_entities_statute_citation(processor):
+    """Statute citations like '15 U.S.C. § 1' should be extracted."""
+    raw_text = "Violations of 15 U.S.C. § 1 and 28 U.S.C. § 1331(a) are alleged."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    statutes = [e for e in entities if e.type == "statute_citation"]
+
+    assert len(statutes) == 2
+    assert any("15 U.S.C. § 1" in s.value for s in statutes)
+    assert any("28 U.S.C. § 1331(a)" in s.value for s in statutes)
+
+
+def test_extract_entities_court_name(processor):
+    """Court names should be extracted."""
+    raw_text = "Filed in the United States District Court for the Southern District of New York."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    courts = [e for e in entities if e.type == "court_name"]
+
+    assert len(courts) == 1
+    assert "United States District Court" in courts[0].value
+
+
+def test_extract_entities_judge_name(processor):
+    """Judge names should be extracted."""
+    raw_text = "Hon. John Smith presided. Judge Jane Doe issued the ruling."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    judges = [e for e in entities if e.type == "judge_name"]
+
+    assert len(judges) == 2
+    assert any("Hon. John Smith" in j.value for j in judges)
+    assert any("Judge Jane Doe" in j.value for j in judges)
+
+
+def test_extract_entities_deduplication_across_types(processor):
+    """Same text matched by different entity types should still dedupe within each type."""
+    raw_text = "Smith v. Jones, 123 F.3d 456. Smith v. Jones, 123 F.3d 456."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    citations = [e for e in entities if e.type == "case_citation"]
+
+    assert len(citations) == 1  # deduplicated

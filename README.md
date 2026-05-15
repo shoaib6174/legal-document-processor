@@ -4,15 +4,19 @@ A pipeline for ingesting messy legal documents, extracting structured informatio
 
 Built for the Pearson Specter Litt AI Engineer take-home assessment.
 
+> **Architecture Cover Photo:** Open [`docs/architecture-cover.html`](docs/architecture-cover.html) in any browser for a visual overview of the 6-stage pipeline. No build step required.
+>
+> **Edit Session Demo:** See [`docs/EDIT_SESSION.md`](docs/EDIT_SESSION.md) for a concrete walkthrough of the feedback loop — from initial draft to operator edits to learned rules.
+
 ## What It Does
 
-1. **Process** — Extracts text from PDFs and images using hybrid OCR (native text extraction + Tesseract fallback for scanned pages). Chunks text into ~300-word passages with overlap, extracts entities (dates, amounts, parties, case numbers), and scores each chunk for OCR confidence.
+1. **Process** — Extracts text from PDFs and images using hybrid OCR (native text extraction + Tesseract fallback for scanned pages). Sentence-aware chunking ensures no sentence is split across chunks. Extracts entities (dates, amounts, parties, case numbers, case citations, statute citations, court names, judge names) and scores each chunk for OCR confidence.
 
-2. **Retrieve** — Uses hybrid search (dense embeddings via ChromaDB + sparse BM25 + Reciprocal Rank Fusion) to find the most relevant evidence passages for a given query. Every retrieved passage carries a `chunk_id` so its source can be traced.
+2. **Retrieve** — Uses hybrid search (dense embeddings via ChromaDB + sparse BM25 + Reciprocal Rank Fusion) with legal query expansion to find the most relevant evidence passages. Every retrieved passage carries a `chunk_id` so its source can be traced.
 
-3. **Generate** — Feeds retrieved evidence into a Groq LLM (Llama 3.3 70B) with a structured system prompt. The model produces a `CaseFactSummary` JSON with parties, dates, claims, key facts, and uncertainties. Every fact cites its supporting evidence chunks; unsupported facts land in `uncertainties`.
+3. **Generate** — Two-stage generation: first analyzes evidence, then produces a structured `CaseFactSummary` JSON with parties, dates, claims, key facts, document summary, financial summary, and uncertainties. Post-generation semantic grounding verification catches hallucinations that citation validation misses.
 
-4. **Learn** — Captures operator edits via a diff engine, extracts reusable correction rules, and injects the top rules into future generation prompts.
+4. **Learn** — Captures operator edits via a diff engine, extracts reusable correction rules with 12 heuristic generalizers + LLM fallback, scores rule effectiveness, and injects the best rules into future generation prompts.
 
 ## Prerequisites
 
@@ -60,9 +64,13 @@ The FastAPI server starts on `http://localhost:8000`.
 Open `http://localhost:8000` in a browser. The UI supports:
 
 - Drag-and-drop or click-to-select file upload (PDF, PNG, JPG)
-- One-click generation of a Case Fact Summary
+- Side-by-side PDF viewer with rendered page images
+- Color-coded entity highlighting in extracted text
+- Auto-generated Case Fact Summary with clickable citations
+- Grounding score banner showing semantic support strength
 - Inline JSON editor for reviewing and editing drafts
 - Submitting edits to train the system's correction rules
+- Retrieval method badges (dense, sparse, hybrid) and RRF fusion scores
 
 ### API Endpoints
 
@@ -72,6 +80,7 @@ Open `http://localhost:8000` in a browser. The UI supports:
 | `/upload` | POST | Upload a document (`file: UploadFile`) |
 | `/generate` | POST | Generate a draft (`query: str = "Generate a case fact summary"`) |
 | `/feedback` | POST | Submit edited draft (`edited_draft: str`) |
+| `/rendered/{doc_id}/{page_file}` | GET | Serve rendered page PNG |
 
 Example with `curl`:
 
@@ -102,9 +111,10 @@ pytest tests/test_processor.py -v
 pytest tests/test_retrieval.py -v
 pytest tests/test_generator.py -v
 pytest tests/test_feedback.py -v
+pytest tests/test_feedback_improvement.py -v
 ```
 
-Expected output: 21 tests pass.
+Expected output: 40 tests pass.
 
 ### Generate synthetic test documents
 
@@ -118,28 +128,37 @@ Creates clean-text and scanned/image PDFs in `evaluation/synthetic_docs/` for ma
 
 ```
 .
-├── main.py                  # FastAPI app with /upload, /generate, /feedback
-├── requirements.txt         # Python dependencies
+├── main.py                       # FastAPI app with /upload, /generate, /feedback
+├── requirements.txt              # Python dependencies
 ├── core/
-│   ├── models.py            # Pydantic data models
-│   ├── processor.py         # DocumentProcessor (OCR, chunking, entities)
-│   ├── retrieval.py         # EvidenceRetriever (ChromaDB + BM25 + RRF)
-│   ├── generator.py         # DraftGenerator (Groq LLM client)
-│   └── feedback.py          # FeedbackEngine (SQLite + rule extraction)
+│   ├── models.py                 # Pydantic data models
+│   ├── processor.py              # DocumentProcessor (OCR, sentence-aware chunking, entity extraction, deskewing)
+│   ├── retrieval.py              # EvidenceRetriever (ChromaDB + BM25 + RRF + query expansion)
+│   ├── generator.py              # DraftGenerator (two-stage Groq LLM client)
+│   ├── feedback.py               # FeedbackEngine (SQLite + rule extraction + effectiveness scoring)
+│   └── grounding.py              # GroundingVerifier (post-generation semantic verification)
 ├── tests/
-│   ├── test_processor.py    # 13 tests for chunking, entities, OCR
-│   ├── test_retrieval.py    # 3 tests for hybrid search
-│   ├── test_generator.py    # 3 tests for prompt assembly and JSON parsing
-│   └── test_feedback.py     # 5 tests for diff capture and rule ranking
+│   ├── test_processor.py         # 22 tests for chunking, entities, OCR
+│   ├── test_retrieval.py         # 3 tests for hybrid search
+│   ├── test_generator.py         # 3 tests for prompt assembly and JSON parsing
+│   ├── test_feedback.py          # 7 tests for diff capture and rule ranking
+│   └── test_feedback_improvement.py  # 5 end-to-end tests for feedback loop
 ├── evaluation/
-│   ├── generate_samples.py  # Creates synthetic PDFs
-│   └── synthetic_docs/      # Generated test files
+│   ├── generate_samples.py       # Creates synthetic PDFs
+│   └── synthetic_docs/           # Generated test files
 ├── static/
-│   ├── index.html           # Minimal web UI
-│   └── app.js               # Frontend logic
-├── ARCHITECTURE.md          # Full system design with tradeoffs
-└── README.md                # This file
+│   ├── index.html                # Web UI with split-screen PDF viewer
+│   └── app.js                    # Frontend logic with entity highlighting
+├── ARCHITECTURE.md               # Full system design with tradeoffs
+├── ASSESSMENT.md                 # Original take-home requirements and rubric
+└── README.md                     # This file
 ```
+
+## Screenshot Gallery
+
+| Initial Upload | After Processing | Full Pipeline | Final Draft |
+|---|---|---|---|
+| ![Initial](docs/screenshots/ui_initial.png) | ![After Upload](docs/screenshots/ui_after_upload.png) | ![Full](docs/screenshots/ui_full.png) | ![Final](docs/screenshots/ui_final.png) |
 
 ## Architecture Overview
 
@@ -151,7 +170,7 @@ Upload (PDF/Image)
     ▼
 ┌─────────────────┐
 │ 1. PROCESS      │──▶ OCR + regex structuring ──▶ raw_text + chunks + entities
-│   (processor)   │     Low-confidence chunks flagged but kept in pipeline
+│   (processor)   │     Sentence-aware chunking, deskewing, 8 entity types
 └─────────────────┘
     │
     ▼
@@ -160,21 +179,27 @@ Upload (PDF/Image)
 │   (retriever)   │     Metadata: source_doc, page_num, confidence_score
 └─────────────────┘
     │
-    ▼ (User triggers "Generate")
+    ▼ (Auto-triggered after upload)
 ┌─────────────────┐
 │ 3. RETRIEVE     │──▶ Hybrid dense + sparse search ──▶ RRF fusion
-│   (retriever)   │     Returns top-k passages with chunk_id citations
+│   (retriever)   │     Legal query expansion, per-chunk retrieval method tracking
 └─────────────────┘
     │
     ▼
 ┌─────────────────┐
-│ 4. GENERATE     │──▶ Few-shot prompt + evidence + correction rules
-│   (generator)   │     Groq LLM produces structured CaseFactSummary JSON
+│ 4. GENERATE     │──▶ Two-stage: analyze evidence, then generate structured output
+│   (generator)   │     Correction rules injection, JSON schema enforcement
 └─────────────────┘
     │
     ▼
 ┌─────────────────┐
-│ 5. LEARN        │──▶ Diff original vs edited ──▶ Extract rules
+│ 5. VERIFY       │──▶ Semantic grounding check ──▶ Ungrounded facts → uncertainties
+│   (grounding)   │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ 6. LEARN        │──▶ Diff original vs edited ──▶ Extract rules, score effectiveness
 │   (feedback)    │     SQLite storage; top rules injected into future prompts
 └─────────────────┘
 ```
@@ -183,57 +208,22 @@ See `ARCHITECTURE.md` for detailed tradeoffs, assumptions, and rubric alignment.
 
 ## Key Design Decisions
 
-- **Hybrid OCR** — Native `pymupdf` text extraction is fast and accurate for clean PDFs. `pytesseract` + `pdf2image` is used as a fallback for scanned pages. Per-chunk confidence scoring lets the generator know which text is trustworthy.
+- **Hybrid OCR** — Native `pymupdf` text extraction is fast and accurate for clean PDFs. `pytesseract` + image preprocessing (deskew, contrast boost, denoise) is used as a fallback for scanned pages. Per-chunk confidence scoring lets the generator know which text is trustworthy.
 
-- **Hybrid Retrieval** — Dense embeddings (ChromaDB + `all-MiniLM-L6-v2`) catch semantic similarity (e.g., "liability claim" ≈ "damages request"). BM25 catches exact matches on case numbers like `PSL-2024-0017` that embeddings might miss. RRF merges the two without requiring score calibration.
+- **Sentence-Aware Chunking** — Text is split into sentences first, then grouped into ~300-word chunks. Sentences are never split across chunks, ensuring each retrieved passage contains complete thoughts.
 
-- **Grounded Generation** — The system prompt explicitly instructs the LLM to cite `chunk_id` for every fact and place unsupported claims in `uncertainties`. The output schema is enforced via `response_format={"type": "json_object"}`.
+- **Hybrid Retrieval** — Dense embeddings (ChromaDB + `all-MiniLM-L6-v2`) catch semantic similarity. BM25 catches exact matches on case numbers and citations. RRF merges the two without requiring score calibration. Legal query expansion adds synonyms for 15 common legal terms (breach → violation/failure to perform, etc.).
 
-- **Feedback Loop** — Operator edits are diffed recursively. Changed field paths + original → edited values become frequency-weighted rules. The top-3 most frequent rules are injected into the system prompt before the next generation.
+- **Two-Stage Generation** — Stage 1 analyzes evidence and produces a factual outline. Stage 2 uses that outline as context to generate the structured `CaseFactSummary`. This produces more coherent, better-grounded outputs than single-shot generation.
 
-## Sample Input / Output
+- **Post-Generation Grounding Verification** — After the LLM produces output, a semantic similarity check verifies that each fact is supported by its cited evidence. Facts below a similarity threshold are moved to `uncertainties` with a `[Grounding check]` prefix.
 
-### Input
-
-A scanned or native-text PDF legal document, e.g.:
-- `evaluation/synthetic_docs/contract_clean.pdf` — a service agreement with parties, dates, amounts, and liability clauses
-- `evaluation/synthetic_docs/pleading_scanned.pdf` — a scanned complaint document
-
-### Output
-
-A structured `CaseFactSummary` JSON:
-
-```json
-{
-  "parties": [
-    {"name": "ACME INDUSTRIES LLC", "role": "provider"},
-    {"name": "SMITH VENTURES INC.", "role": "client"}
-  ],
-  "dates": [
-    {"date": "March 15, 2024", "event": "Service Agreement entered into"},
-    {"date": "April 1, 2024", "event": "Term commences"},
-    {"date": "March 31, 2025", "event": "Term ends"}
-  ],
-  "claims": [
-    {
-      "description": "Provider's liability is limited to the amount paid by Client",
-      "supporting_evidence": ["contract_clean.pdf_p1_c0"]
-    }
-  ],
-  "key_facts": [
-    {
-      "statement": "The total fee for consulting services is $125,000.",
-      "supporting_evidence": ["contract_clean.pdf_p1_c0"]
-    }
-  ],
-  "uncertainties": []
-}
-```
+- **Feedback Loop with Effectiveness Scoring** — Rules are not just extracted but also scored. When an operator edits a draft, the system checks which previously-applied rules would have prevented the edit. Rules with low empirical success rates are filtered out before injection.
 
 ## Tech Stack
 
 - **Backend:** FastAPI, Python 3.11+
-- **OCR:** `pymupdf` (native text) + `pytesseract` + `pdf2image` (scan fallback)
+- **OCR:** `pymupdf` (native text) + `pytesseract` (scan fallback with deskewing)
 - **Embeddings:** `sentence-transformers` (`all-MiniLM-L6-v2`, 384-dim, CPU)
 - **Vector Store:** ChromaDB (persistent, `./data/chroma_db`)
 - **Sparse Search:** `rank-bm25`

@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Document Processor — Architecture</title>
+    <style>
+        :root {
+            --bg-deep: #0f172a;
+            --bg-card: #1e293b;
+            --border: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --stage-process: #8b5cf6;
+            --stage-index: #14b8a6;
+            --stage-retrieve: #f97316;
+            --stage-generate: #06b6d4;
+            --stage-verify: #22c55e;
+            --stage-learn: #f43f5e;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .poster {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* ── Hero ─────────────────────────────────────── */
+        .hero {
+            text-align: center;
+            padding: 60px 20px;
+            position: relative;
+            overflow: hidden;
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(139,92,246,0.1) 50%, rgba(244,63,94,0.1) 100%);
+            border: 1px solid var(--border);
+            margin-bottom: 40px;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 16px;
+            padding: 2px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--stage-process), var(--stage-learn), var(--accent-blue));
+            background-size: 300% 100%;
+            animation: flow 8s linear infinite;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        @keyframes flow {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 300% 50%; }
+        }
+
+        .hero-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--stage-process));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            box-shadow: 0 8px 32px rgba(59,130,246,0.3);
+        }
+
+        .hero h1 {
+            font-size: 42px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .hero .subtitle {
+            font-size: 20px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .hero .tagline {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'SF Mono', Monaco, monospace;
+            letter-spacing: 1px;
+        }
+
+        /* ── Section Titles ───────────────────────────── */
+        .section-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 48px 0 24px;
+            text-align: center;
+            color: var(--text-primary);
+        }
+
+        .section-title span {
+            color: var(--accent-blue);
+        }
+
+        /* ── Pipeline ─────────────────────────────────── */
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 16px;
+            position: relative;
+        }
+
+        .pipeline-grid::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 8%;
+            right: 8%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--stage-process), var(--stage-index), var(--stage-retrieve), var(--stage-generate), var(--stage-verify), var(--stage-learn));
+            opacity: 0.3;
+            z-index: 0;
+        }
+
+        .stage-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 16px;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: fadeInUp 0.6s ease both;
+        }
+
+        .stage-card:nth-child(1) { animation-delay: 0.1s; }
+        .stage-card:nth-child(2) { animation-delay: 0.2s; }
+        .stage-card:nth-child(3) { animation-delay: 0.3s; }
+        .stage-card:nth-child(4) { animation-delay: 0.4s; }
+        .stage-card:nth-child(5) { animation-delay: 0.5s; }
+        .stage-card:nth-child(6) { animation-delay: 0.6s; }
+
+        .stage-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .stage-num {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            margin: 0 auto 12px;
+            color: white;
+        }
+
+        .stage-card:nth-child(1) .stage-num { background: var(--stage-process); box-shadow: 0 4px 16px rgba(139,92,246,0.4); }
+        .stage-card:nth-child(2) .stage-num { background: var(--stage-index); box-shadow: 0 4px 16px rgba(20,184,166,0.4); }
+        .stage-card:nth-child(3) .stage-num { background: var(--stage-retrieve); box-shadow: 0 4px 16px rgba(249,115,22,0.4); }
+        .stage-card:nth-child(4) .stage-num { background: var(--stage-generate); box-shadow: 0 4px 16px rgba(6,182,212,0.4); }
+        .stage-card:nth-child(5) .stage-num { background: var(--stage-verify); box-shadow: 0 4px 16px rgba(34,197,94,0.4); }
+        .stage-card:nth-child(6) .stage-num { background: var(--stage-learn); box-shadow: 0 4px 16px rgba(244,63,94,0.4); }
+
+        .stage-name {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .stage-card:nth-child(1) .stage-name { color: var(--stage-process); }
+        .stage-card:nth-child(2) .stage-name { color: var(--stage-index); }
+        .stage-card:nth-child(3) .stage-name { color: var(--stage-retrieve); }
+        .stage-card:nth-child(4) .stage-name { color: var(--stage-generate); }
+        .stage-card:nth-child(5) .stage-name { color: var(--stage-verify); }
+        .stage-card:nth-child(6) .stage-name { color: var(--stage-learn); }
+
+        .stage-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .stage-file {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 10px;
+            color: #64748b;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* ── Tech Stack ───────────────────────────────── */
+        .tech-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .tech-badge {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+        }
+
+        .tech-badge:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+            transform: translateY(-2px);
+        }
+
+        /* ── Features ─────────────────────────────────── */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+        }
+
+        .feature-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 14px;
+        }
+
+        .feature-card:nth-child(1) .feature-icon { background: rgba(139,92,246,0.15); }
+        .feature-card:nth-child(2) .feature-icon { background: rgba(249,115,22,0.15); }
+        .feature-card:nth-child(3) .feature-icon { background: rgba(6,182,212,0.15); }
+        .feature-card:nth-child(4) .feature-icon { background: rgba(244,63,94,0.15); }
+
+        .feature-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .feature-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* ── Entity Pills ─────────────────────────────── */
+        .entity-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .entity-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid;
+        }
+
+        .entity-pill .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* ── Metrics ──────────────────────────────────── */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .metric {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px 20px;
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .metric:hover {
+            transform: translateY(-4px);
+        }
+
+        .metric-value {
+            font-size: 40px;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-blue), var(--stage-process));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
+            margin-bottom: 8px;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* ── Architecture Diagram ─────────────────────── */
+        .diagram-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+        }
+
+        .flow-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .flow-box {
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 500;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .flow-box.ui { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .flow-box.api { border-color: var(--accent-green); color: var(--accent-green); }
+        .flow-box.proc { border-color: var(--stage-process); color: var(--stage-process); }
+        .flow-box.store { border-color: var(--stage-index); color: var(--stage-index); }
+        .flow-box.llm { border-color: var(--stage-generate); color: var(--stage-generate); }
+        .flow-box.feedback { border-color: var(--stage-learn); color: var(--stage-learn); }
+
+        .flow-arrow {
+            color: var(--text-secondary);
+            font-size: 16px;
+        }
+
+        .flow-label {
+            font-size: 11px;
+            color: #64748b;
+            text-align: center;
+            margin-top: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        /* ── Footer ───────────────────────────────────── */
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            margin-top: 40px;
+            border-top: 1px solid var(--border);
+        }
+
+        footer p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        footer .highlight {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* ── Responsive ───────────────────────────────── */
+        @media (max-width: 1024px) {
+            .pipeline-grid { grid-template-columns: repeat(3, 1fr); }
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
+            .pipeline-grid::before { display: none; }
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 28px; }
+            .hero .subtitle { font-size: 16px; }
+            .pipeline-grid { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+            .flow-row { flex-direction: column; }
+            .flow-arrow { transform: rotate(90deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="poster">
+        <!-- Hero -->
+        <header class="hero">
+            <div class="hero-icon">&#9878;</div>
+            <h1>Legal Document Processor</h1>
+            <p class="subtitle">6-Stage RAG Pipeline for Legal Document Intelligence</p>
+            <p class="tagline">OCR &middot; Hybrid Retrieval &middot; Grounded Generation &middot; Continuous Learning</p>
+        </header>
+
+        <!-- Pipeline -->
+        <h2 class="section-title"><span>01</span> Pipeline Stages</h2>
+        <div class="pipeline-grid">
+            <div class="stage-card">
+                <div class="stage-num">1</div>
+                <div class="stage-name">Process</div>
+                <div class="stage-desc">Hybrid OCR with deskewing + 8 entity extraction types</div>
+                <div class="stage-file">core/processor.py</div>
+            </div>
+            <div class="stage-card">
+                <div class="stage-num">2</div>
+                <div class="stage-name">Index</div>
+                <div class="stage-desc">Sentence-aware chunking + dense embedding storage</div>
+                <div class="stage-file">core/retrieval.py</div>
+            </div>
+            <div class="stage-card">
+                <div class="stage-num">3</div>
+                <div class="stage-name">Retrieve</div>
+                <div class="stage-desc">Hybrid dense + sparse search with RRF fusion</div>
+                <div class="stage-file">core/retrieval.py</div>
+            </div>
+            <div class="stage-card">
+                <div class="stage-num">4</div>
+                <div class="stage-name">Generate</div>
+                <div class="stage-desc">Two-stage LLM: analyze evidence, then synthesize</div>
+                <div class="stage-file">core/generator.py</div>
+            </div>
+            <div class="stage-card">
+                <div class="stage-num">5</div>
+                <div class="stage-name">Verify</div>
+                <div class="stage-desc">Semantic grounding check, threshold 0.55</div>
+                <div class="stage-file">core/grounding.py</div>
+            </div>
+            <div class="stage-card">
+                <div class="stage-num">6</div>
+                <div class="stage-name">Learn</div>
+                <div class="stage-desc">12 heuristics + LLM fallback, effectiveness scoring</div>
+                <div class="stage-file">core/feedback.py</div>
+            </div>
+        </div>
+
+        <!-- Tech Stack -->
+        <h2 class="section-title"><span>02</span> Tech Stack</h2>
+        <div class="tech-grid">
+            <div class="tech-badge">FastAPI</div>
+            <div class="tech-badge">Python 3.11+</div>
+            <div class="tech-badge">sentence-transformers</div>
+            <div class="tech-badge">ChromaDB</div>
+            <div class="tech-badge">rank-bm25</div>
+            <div class="tech-badge">Groq API</div>
+            <div class="tech-badge">SQLite</div>
+            <div class="tech-badge">pytest</div>
+            <div class="tech-badge">pymupdf</div>
+            <div class="tech-badge">pytesseract</div>
+            <div class="tech-badge">Pydantic</div>
+            <div class="tech-badge">Vanilla HTML/JS</div>
+        </div>
+
+        <!-- Features -->
+        <h2 class="section-title"><span>03</span> Key Features</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">&#128269;</div>
+                <div class="feature-title">Hybrid OCR</div>
+                <div class="feature-desc">Native text extraction + Tesseract fallback with deskewing, contrast boost, and image preprocessing for scanned pages</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#128214;</div>
+                <div class="feature-title">Hybrid Retrieval</div>
+                <div class="feature-desc">Dense embeddings + BM25 sparse + RRF fusion + 15 legal synonym expansions for comprehensive evidence finding</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#128221;</div>
+                <div class="feature-title">Grounded Generation</div>
+                <div class="feature-desc">Two-stage analysis, citation enforcement, post-generation semantic verification with uncertainty flagging</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#9851;</div>
+                <div class="feature-title">Learning Loop</div>
+                <div class="feature-desc">Deep-diff edit capture, 12 heuristic generalizers, effectiveness scoring, recency decay, semantic deduplication</div>
+            </div>
+        </div>
+
+        <!-- Entity Types -->
+        <h2 class="section-title"><span>04</span> 8 Entity Types</h2>
+        <div class="entity-row">
+            <div class="entity-pill" style="background:#e3f2fd33;border-color:#1565c0;color:#60a5fa;"><span class="dot" style="background:#1565c0;"></span>Date</div>
+            <div class="entity-pill" style="background:#e8f5e933;border-color:#2e7d32;color:#4ade80;"><span class="dot" style="background:#2e7d32;"></span>Amount</div>
+            <div class="entity-pill" style="background:#fff3e033;border-color:#ef6c00;color:#fb923c;"><span class="dot" style="background:#ef6c00;"></span>Party</div>
+            <div class="entity-pill" style="background:#f3e5f533;border-color:#6a1b9a;color:#c084fc;"><span class="dot" style="background:#6a1b9a;"></span>Case #</div>
+            <div class="entity-pill" style="background:#fce4ec33;border-color:#c62828;color:#f87171;"><span class="dot" style="background:#c62828;"></span>Case Cite</div>
+            <div class="entity-pill" style="background:#e0f7fa33;border-color:#006064;color:#22d3ee;"><span class="dot" style="background:#006064;"></span>Statute</div>
+            <div class="entity-pill" style="background:#f1f8e933;border-color:#33691e;color:#a3e635;"><span class="dot" style="background:#33691e;"></span>Court</div>
+            <div class="entity-pill" style="background:#fff8e133;border-color:#795548;color:#d4d4d4;"><span class="dot" style="background:#795548;"></span>Judge</div>
+        </div>
+
+        <!-- Metrics -->
+        <h2 class="section-title"><span>05</span> Key Metrics</h2>
+        <div class="metrics-grid">
+            <div class="metric">
+                <div class="metric-value">40</div>
+                <div class="metric-label">Tests Passing</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">6</div>
+                <div class="metric-label">Pipeline Stages</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">8</div>
+                <div class="metric-label">Entity Types</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">12</div>
+                <div class="metric-label">Heuristic Generalizers</div>
+            </div>
+        </div>
+
+        <!-- Architecture Diagram -->
+        <h2 class="section-title"><span>06</span> System Architecture</h2>
+        <div class="diagram-box">
+            <div class="flow-row">
+                <div class="flow-box ui">Web UI</div>
+                <div class="flow-arrow">&#8594;</div>
+                <div class="flow-box api">FastAPI</div>
+                <div class="flow-arrow">&#8594;</div>
+                <div class="flow-box proc">Document Processor</div>
+                <div class="flow-arrow">&#8594;</div>
+                <div class="flow-box store">ChromaDB + BM25</div>
+            </div>
+            <div class="flow-row">
+                <div class="flow-box llm">Groq LLM</div>
+                <div class="flow-arrow">&#8592;</div>
+                <div class="flow-box feedback">Feedback Store (SQLite)</div>
+            </div>
+            <div class="flow-label">Feedback loop: edits &#8594; rules &#8594; future prompts</div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p>Built for <span class="highlight">Pearson Specter Litt</span> AI Engineer Assessment</p>
+            <p>Python 3.11+ &middot; 40 Tests &middot; Zero Build Step &middot; Open in Browser</p>
+        </footer>
+    </div>
+</body>
+</html>

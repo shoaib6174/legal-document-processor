@@ -3,16 +3,35 @@ CLAUDE.md
 .env
 .venv/
 
+# Dev artifacts
+.claude/
+.playwright-mcp/
+debug_test.py
+*.local.json
+
+# Personal design docs (not part of submission)
+2026-05-13-legal-doc-processor-design.md
+project-edgerag-plan.md
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.pytest_cache/
 
 # Data
-data/chroma_db/
-data/*.db
+data/
+
+# Generated synthetic documents (can be regenerated with generate_samples.py)
+evaluation/synthetic_docs/
 
 # IDE
 .vscode/
 .idea/
+
+# Plan mode artifacts
+docs/superpowers/
+
+# OS
+.DS_Store

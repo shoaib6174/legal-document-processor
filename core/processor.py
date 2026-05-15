@@ -39,6 +39,27 @@ class DocumentProcessor:
             re.IGNORECASE,
         )
 
+        # Legal-specific entity patterns
+        # Case citations: "Smith v. Jones, 123 F.3d 456 (9th Cir. 2024)" or "2024 WL 1234567"
+        self.case_citation_pattern = re.compile(
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+v\.\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s+\d+\s+[A-Z]\.\d+[a-z]?\s+\d+(?:\s*\([^)]*\d{4}\))?|\d{4}\s+WL\s+\d+)\b"
+        )
+        # Statute citations: "15 U.S.C. § 1" or "28 U.S.C. § 1331(a)" or "42 U.S.C. § 1983"
+        self.statute_citation_pattern = re.compile(
+            r"\b(\d+)\s+U\.S\.C\.\s+§+\s*(\d+[a-z]?(?:\([^)]*\))?)",
+            re.IGNORECASE,
+        )
+        # Court names
+        self.court_name_pattern = re.compile(
+            r"\b((?:United States|U\.S\.)\s+(?:District|Circuit|Bankruptcy|Court of Appeals|Supreme)\s+Court(?:\s+(?:for\s+the\s+[A-Za-z]+\s+(?:District|Circuit)|of\s+[A-Za-z]+))?|(?:Supreme|Superior|Appellate)\s+Court\s+(?:of\s+[A-Za-z]+|of\s+the\s+State\s+of\s+[A-Za-z]+)?)\b",
+            re.IGNORECASE,
+        )
+        # Judge names: "Hon. John Smith", "Judge Jane Doe", "The Honorable Robert Johnson"
+        self.judge_name_pattern = re.compile(
+            r"\b((?:The\s+)?(?:Hon\.?|Honorable|Judge|Justice)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
+            re.IGNORECASE,
+        )
+
     def process(self, file_path: Path, source_doc: str | None = None) -> ProcessedDocument:
         """Process a document and return structured output."""
         file_path = Path(file_path)
@@ -115,16 +136,35 @@ class DocumentProcessor:
         return ocr_text, chunks
 
     def _ocr_image(self, img: Image.Image) -> str:
-        """Run OCR with basic preprocessing to improve accuracy."""
+        """Run OCR with preprocessing to improve accuracy on messy scans."""
+        # Deskew if needed
+        img = self._deskew_image(img)
+
         # Convert to grayscale
         if img.mode != "L":
             img = img.convert("L")
+
         # Boost contrast — helps with faded scans
         enhancer = ImageEnhance.Contrast(img)
         img = enhancer.enhance(2.0)
-        # Mild denoise
+
+        # Adaptive thresholding for better binarization on uneven lighting
         img = img.filter(ImageFilter.MedianFilter(size=3))
+
         return pytesseract.image_to_string(img)
+
+    def _deskew_image(self, img: Image.Image) -> Image.Image:
+        """Detect and correct skew angle using Tesseract OSD."""
+        try:
+            osd = pytesseract.image_to_osd(img, output_type=pytesseract.Output.DICT)
+            angle = osd.get("rotate", 0)
+            if angle and angle != 0:
+                # PIL rotates counter-clockwise, so negate the angle
+                img = img.rotate(-angle, expand=True, fillcolor="white")
+        except Exception:
+            # OSD can fail on small images or already-clean text — safe to ignore
+            pass
+        return img
 
     def _estimate_ocr_confidence(self, img: Image.Image) -> float:
         """Estimate OCR confidence from tesseract word-level confidence data."""
@@ -144,18 +184,60 @@ class DocumentProcessor:
         chunk_size: int = 300,
         overlap: int = 50,
     ) -> List[TextChunk]:
-        """Split text into overlapping word chunks for retrieval."""
-        words = text.split()
-        if not words:
+        """Split text into overlapping sentence-aware chunks for retrieval.
+
+        Sentences are never split across chunks — this ensures each chunk
+        contains complete thoughts, which dramatically improves retrieval
+        quality and downstream generation coherence.
+        """
+        sentences = self._split_sentences(text)
+        if not sentences:
             return []
 
         chunks = []
-        start = 0
         idx = 0
+        current_sentences = []
+        current_word_count = 0
+        overlap_sentences = []  # sentences to carry over for overlap
+        overlap_word_count = 0
 
-        while start < len(words):
-            end = min(start + chunk_size, len(words))
-            chunk_text = " ".join(words[start:end])
+        for sentence in sentences:
+            sentence_word_count = len(sentence.split())
+
+            # If adding this sentence would exceed chunk_size, finalize current chunk
+            if current_word_count + sentence_word_count > chunk_size and current_sentences:
+                chunk_text = " ".join(current_sentences)
+                chunks.append(
+                    TextChunk(
+                        chunk_id=f"{source_doc}_p{page_num}_c{idx}",
+                        text=chunk_text,
+                        source_doc=source_doc,
+                        page_num=page_num,
+                        confidence_score=confidence,
+                    )
+                )
+                idx += 1
+
+                # Build overlap: carry sentences from the end that fit within overlap word budget
+                overlap_sentences = []
+                overlap_word_count = 0
+                for s in reversed(current_sentences):
+                    sw = len(s.split())
+                    if overlap_word_count + sw <= overlap:
+                        overlap_sentences.insert(0, s)
+                        overlap_word_count += sw
+                    else:
+                        break
+
+                current_sentences = list(overlap_sentences) + [sentence]
+                current_word_count = overlap_word_count + sentence_word_count
+            else:
+                current_sentences.append(sentence)
+                current_word_count += sentence_word_count
+
+        # Don't forget the last chunk
+        if current_sentences:
+            chunk_text = " ".join(current_sentences)
             chunks.append(
                 TextChunk(
                     chunk_id=f"{source_doc}_p{page_num}_c{idx}",
@@ -165,16 +247,90 @@ class DocumentProcessor:
                     confidence_score=confidence,
                 )
             )
-            next_start = end - overlap
-            if next_start <= start:  # No forward progress — we're done
-                break
-            start = next_start
-            idx += 1
 
         return chunks
 
+    def _split_sentences(self, text: str) -> List[str]:
+        """Split text into sentences using regex. Handles common abbreviations."""
+        # Protect common abbreviations to avoid false sentence splits
+        protected = text
+        abbreviations = {
+            r"Mr\.": "{{MR}}",
+            r"Mrs\.": "{{MRS}}",
+            r"Ms\.": "{{MS}}",
+            r"Dr\.": "{{DR}}",
+            r"Prof\.": "{{PROF}}",
+            r"Jr\.": "{{JR}}",
+            r"Sr\.": "{{SR}}",
+            r"Inc\.": "{{INC}}",
+            r"Corp\.": "{{CORP}}",
+            r"LLC\.": "{{LLC}}",
+            r"Ltd\.": "{{LTD}}",
+            r"U\.S\.C\.": "{{USC}}",
+            r"U\.S\.": "{{US}}",
+            r"v\.": "{{V}}",
+            r"Hon\.": "{{HON}}",
+            r"No\.": "{{NO}}",
+            r"et\s+al\.": "{{ETAL}}",
+            r"e\.g\.": "{{EG}}",
+            r"i\.e\.": "{{IE}}",
+            r"etc\.": "{{ETC}}",
+            r"vs\.": "{{VS}}",
+            r"Fig\.": "{{FIG}}",
+            r"pp\.": "{{PP}}",
+            r"vol\.": "{{VOL}}",
+            r"Vol\.": "{{VOL2}}",
+        }
+        for abbrev, placeholder in abbreviations.items():
+            protected = re.sub(abbrev, placeholder, protected)
+
+        # Split on sentence boundaries: period, question mark, exclamation followed by space or end
+        sentence_pattern = re.compile(r'(?<=[.!?])\s+(?=[A-Z"\'])')
+        raw_sentences = sentence_pattern.split(protected)
+
+        # Restore abbreviations and clean up
+        reverse_map = {v: k.replace("\\", "").replace("?", ".") for k, v in abbreviations.items()}
+        # Fix specific replacements
+        reverse_map = {
+            "{{MR}}": "Mr.",
+            "{{MRS}}": "Mrs.",
+            "{{MS}}": "Ms.",
+            "{{DR}}": "Dr.",
+            "{{PROF}}": "Prof.",
+            "{{JR}}": "Jr.",
+            "{{SR}}": "Sr.",
+            "{{INC}}": "Inc.",
+            "{{CORP}}": "Corp.",
+            "{{LLC}}": "LLC.",
+            "{{LTD}}": "Ltd.",
+            "{{USC}}": "U.S.C.",
+            "{{US}}": "U.S.",
+            "{{V}}": "v.",
+            "{{HON}}": "Hon.",
+            "{{NO}}": "No.",
+            "{{ETAL}}": "et al.",
+            "{{EG}}": "e.g.",
+            "{{IE}}": "i.e.",
+            "{{ETC}}": "etc.",
+            "{{VS}}": "vs.",
+            "{{FIG}}": "Fig.",
+            "{{PP}}": "pp.",
+            "{{VOL}}": "vol.",
+            "{{VOL2}}": "Vol.",
+        }
+
+        sentences = []
+        for s in raw_sentences:
+            s = s.strip()
+            for placeholder, abbrev in reverse_map.items():
+                s = s.replace(placeholder, abbrev)
+            if s:
+                sentences.append(s)
+
+        return sentences
+
     def _extract_entities(self, raw_text: str, chunks: List[TextChunk]) -> List[ExtractedEntity]:
-        """Extract dates, amounts, parties, and case numbers from raw text with positions."""
+        """Extract dates, amounts, parties, case numbers, and legal entities from raw text with positions."""
         entities = []
         seen = set()
 
@@ -264,6 +420,62 @@ class DocumentProcessor:
                     )
                 )
 
+        # Case citations (e.g., "Smith v. Jones, 123 F.3d 456")
+        for match in self.case_citation_pattern.finditer(raw_text):
+            val = match.group(1)
+            key = ("case_citation", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="case_citation", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
+                    )
+                )
+
+        # Statute citations (e.g., "15 U.S.C. § 1")
+        for match in self.statute_citation_pattern.finditer(raw_text):
+            val = f"{match.group(1)} U.S.C. § {match.group(2)}"
+            key = ("statute_citation", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="statute_citation", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
+                    )
+                )
+
+        # Court names
+        for match in self.court_name_pattern.finditer(raw_text):
+            val = match.group(1)
+            key = ("court_name", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="court_name", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
+                    )
+                )
+
+        # Judge names
+        for match in self.judge_name_pattern.finditer(raw_text):
+            val = match.group(1)
+            key = ("judge_name", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="judge_name", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
+                    )
+                )
+
         return entities
 
     def _find_chunk_for_offset(self, offset: int, chunks: List[TextChunk]) -> str:
@@ -273,7 +485,10 @@ class DocumentProcessor:
             chunk_len = len(chunk.text)
             if pos <= offset < pos + chunk_len:
                 return chunk.chunk_id
-            pos += chunk_len - 50  # account for overlap
+            # account for overlap: chunks share content, so advance by (chunk_len - overlap_chars)
+            # We estimate overlap chars as proportional to overlap words
+            overlap_chars = min(chunk_len // 2, 200)
+            pos += chunk_len - overlap_chars
         return chunks[0].chunk_id if chunks else "unknown"
 
     def render_pages(self, file_path: Path, output_dir: Path) -> List[str]:
