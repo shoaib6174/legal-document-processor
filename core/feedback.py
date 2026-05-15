@@ -4,16 +4,26 @@ import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 
 class FeedbackEngine:
-    """Capture operator edits and extract reusable correction rules."""
+    """Capture operator edits, extract reusable correction rules, and track effectiveness.
+
+    The feedback loop works as follows:
+    1. Generate draft with top-N rules injected into the prompt
+    2. Operator edits the draft
+    3. Deep-diff original vs edited to find changes
+    4. Generalize each diff into a reusable rule
+    5. Score previously applied rules: did they prevent the same mistake?
+    6. Future generations only inject rules with proven effectiveness
+    """
 
     def __init__(self, db_path: str = "./data/feedback.db"):
         self.db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        self._last_applied_rules: List[str] = []
 
     def _init_db(self) -> None:
         conn = sqlite3.connect(self.db_path)
@@ -27,55 +37,55 @@ class FeedbackEngine:
                 edited_value TEXT,
                 frequency INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                generalized_rule TEXT,
+                rule_type TEXT,
+                success_count INTEGER DEFAULT 0,
+                failure_count INTEGER DEFAULT 0,
+                last_applied TIMESTAMP
             )
             """
         )
-        # Migrate: add new columns if they don't exist
-        cursor.execute("PRAGMA table_info(corrections)")
-        existing_cols = {row[1] for row in cursor.fetchall()}
-        new_cols = {
-            "generalized_rule": "TEXT",
-            "rule_type": "TEXT",
-            "success_count": "INTEGER DEFAULT 0",
-            "failure_count": "INTEGER DEFAULT 0",
-            "last_applied": "TIMESTAMP",
-        }
-        for col, dtype in new_cols.items():
-            if col not in existing_cols:
-                cursor.execute(f"ALTER TABLE corrections ADD COLUMN {col} {dtype}")
         conn.commit()
         conn.close()
 
-    def capture_edit(self, original: dict, edited: dict) -> None:
-        """Capture differences between original and edited drafts."""
+    def track_applied_rules(self, rules: List[str]) -> None:
+        """Record which rules were injected into the last generation prompt.
+
+        Call this BEFORE generation so capture_edit can score effectiveness.
+        """
+        self._last_applied_rules = list(rules)
+
+    def capture_edit(
+        self, original: dict, edited: dict, applied_rules: Optional[List[str]] = None
+    ) -> dict:
+        """Capture differences between original and edited drafts.
+
+        Returns statistics about what was learned and how effective previous rules were.
+        """
         diffs = self._deep_diff(original, edited)
+        rules_to_score = applied_rules or self._last_applied_rules
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+        new_rules_count = 0
 
         for field_path, orig_val, edit_val in diffs:
             generalized = self._generalize_rule(field_path, orig_val, edit_val)
             rule_type = self._classify_rule_type(orig_val, edit_val)
 
-            # Check if this correction already exists
-            cursor.execute(
-                """
-                SELECT id, frequency FROM corrections
-                WHERE field_path = ? AND original_value = ? AND edited_value = ?
-                """,
-                (field_path, orig_val, edit_val),
-            )
-            row = cursor.fetchone()
-            if row:
+            # Check for semantic duplicates before inserting
+            similar_id = self._find_similar_rule(cursor, generalized)
+
+            if similar_id:
+                # Merge with existing similar rule
                 cursor.execute(
                     """
                     UPDATE corrections
-                    SET frequency = frequency + 1, updated_at = CURRENT_TIMESTAMP,
-                        generalized_rule = COALESCE(?, generalized_rule),
-                        rule_type = COALESCE(?, rule_type)
+                    SET frequency = frequency + 1, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
-                    (generalized, rule_type, row[0]),
+                    (similar_id,),
                 )
             else:
                 cursor.execute(
@@ -85,43 +95,173 @@ class FeedbackEngine:
                     """,
                     (field_path, orig_val, edit_val, generalized, rule_type),
                 )
+                new_rules_count += 1
+
+        # Score previously applied rules
+        scored = self._score_applied_rules(cursor, diffs, rules_to_score)
 
         conn.commit()
         conn.close()
 
-    def get_rules(self, limit: int = 3) -> List[str]:
-        """Get top correction rules by weighted score (frequency * recency)."""
+        return {
+            "new_rules_learned": new_rules_count,
+            "total_diffs": len(diffs),
+            "rules_scored": scored,
+        }
+
+    def _score_applied_rules(
+        self, cursor, diffs: List[Tuple[str, str, str]], applied_rules: List[str]
+    ) -> int:
+        """Score previously applied rules based on whether they prevented edits.
+
+        If a rule was applied but the operator STILL had to make a similar edit,
+        the rule failed. If no similar edit was needed, the rule succeeded.
+        """
+        if not applied_rules:
+            return 0
+
+        scored = 0
+        for rule_text in applied_rules:
+            # Find the rule in the database
+            cursor.execute(
+                "SELECT id FROM corrections WHERE generalized_rule = ?",
+                (rule_text,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                continue
+
+            rule_id = row[0]
+
+            # Check if any diff matches what this rule was supposed to prevent
+            rule_failed = False
+            for field_path, orig_val, edit_val in diffs:
+                if self._rule_would_prevent(rule_text, field_path, orig_val, edit_val):
+                    rule_failed = True
+                    break
+
+            if rule_failed:
+                cursor.execute(
+                    """
+                    UPDATE corrections
+                    SET failure_count = failure_count + 1, last_applied = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (rule_id,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE corrections
+                    SET success_count = success_count + 1, last_applied = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (rule_id,),
+                )
+            scored += 1
+
+        return scored
+
+    def _rule_would_prevent(
+        self, rule_text: str, field_path: str, original: str, edited: str
+    ) -> bool:
+        """Check if a previously learned rule should have prevented this edit.
+
+        Returns True if the rule was supposed to catch this but didn't.
+        """
+        rule_lower = rule_text.lower()
+
+        # Party-related rules
+        if "parties" in field_path:
+            if "organizational" in rule_lower or "individual" in rule_lower or "officer" in rule_lower:
+                # Rule says "only orgs" but an individual was present → rule failed
+                if self._is_removal(original, edited):
+                    return True
+            if "full legal name" in rule_lower and ".name" in field_path:
+                if original != edited:
+                    return True
+
+        # Claim-related rules
+        if "claims" in field_path and "claim" in rule_lower:
+            if self._is_removal(original, edited):
+                return True
+
+        # Fact-related rules
+        if "key_facts" in field_path and "evidence" in rule_lower:
+            if self._is_removal(original, edited):
+                return True
+
+        # Date-related rules
+        if "dates" in field_path and "date" in rule_lower:
+            if self._is_removal(original, edited) or original != edited:
+                return True
+
+        # Evidence/citation rules
+        if "evidence" in rule_lower or "citation" in rule_lower:
+            if self._is_evidence_correction(original, edited):
+                return True
+
+        # Financial rules
+        if "financial" in rule_lower or "monetary" in rule_lower or "amount" in rule_lower:
+            if "financial_summary" in field_path and original != edited:
+                return True
+
+        return False
+
+    def get_rules(
+        self, limit: int = 3, min_confidence: float = 0.3
+    ) -> List[str]:
+        """Get top correction rules by weighted score, filtering out low-confidence rules.
+
+        Confidence = success_count / (success_count + failure_count)
+        Rules with insufficient data (fewer than 2 applications) use frequency as proxy.
+        """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT generalized_rule, MAX(frequency) as freq,
-                   MAX(success_count) as succ, MAX(failure_count) as fail,
-                   MAX(
-                       frequency *
-                       (1.0 + COALESCE(success_count, 0)) /
-                       (1.0 + COALESCE(success_count, 0) + COALESCE(failure_count, 0)) *
-                       EXP(-(JULIANDAY('now') - JULIANDAY(updated_at)) / 30.0)
-                   ) as score
+            SELECT generalized_rule, frequency, success_count, failure_count,
+                   JULIANDAY('now') - JULIANDAY(updated_at) as days_old
             FROM corrections
             WHERE generalized_rule IS NOT NULL AND generalized_rule != ''
-            GROUP BY generalized_rule
-            ORDER BY score DESC
-            LIMIT ?
-            """,
-            (limit,),
+            """
         )
         rows = cursor.fetchall()
         conn.close()
 
-        rules = []
-        for generalized, freq, success, failure, score in rows:
-            if generalized and self._is_valid_rule(generalized):
-                rules.append(generalized)
-        return rules
+        scored_rules = []
+        for generalized, freq, success, failure, days_old in rows:
+            if not generalized or not self._is_valid_rule(generalized):
+                continue
+
+            total = (success or 0) + (failure or 0)
+            if total >= 2:
+                # Enough data: use empirical success rate
+                confidence = (success or 0) / total
+            else:
+                # Insufficient data: neutral confidence that increases with frequency
+                confidence = min(0.6, 0.3 + freq * 0.05)
+
+            # Recency decay: rules get stale over time
+            recency_factor = max(0.5, 1.0 - (days_old or 0) / 90.0)
+
+            # Score = confidence * frequency * recency
+            score = confidence * freq * recency_factor
+
+            if confidence >= min_confidence:
+                scored_rules.append((generalized, score, confidence))
+
+        # Sort by score descending
+        scored_rules.sort(key=lambda x: x[1], reverse=True)
+
+        # Store which rules we're about to apply (for later scoring)
+        top_rules = [r[0] for r in scored_rules[:limit]]
+        self._last_applied_rules = top_rules
+
+        return top_rules
 
     def get_stats(self) -> dict:
-        """Return feedback store statistics."""
+        """Return feedback store statistics with effectiveness metrics."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute(
@@ -135,38 +275,66 @@ class FeedbackEngine:
         )
         count, total_freq, unique_rules, total_success, total_failure = cursor.fetchone()
         conn.close()
+
+        total_trials = (total_success or 0) + (total_failure or 0)
+        effectiveness = (total_success / total_trials * 100) if total_trials > 0 else None
+
         return {
             "rule_count": count,
             "total_frequency": total_freq,
             "unique_generalized_rules": unique_rules,
             "total_success": total_success,
             "total_failure": total_failure,
+            "effectiveness_pct": round(effectiveness, 1) if effectiveness is not None else None,
         }
 
-    def score_rule(self, rule_text: str, was_effective: bool) -> None:
-        """Update rule score based on whether applying it reduced future edits."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        if was_effective:
-            cursor.execute(
-                """
-                UPDATE corrections
-                SET success_count = success_count + 1, last_applied = CURRENT_TIMESTAMP
-                WHERE generalized_rule = ?
-                """,
-                (rule_text,),
-            )
-        else:
-            cursor.execute(
-                """
-                UPDATE corrections
-                SET failure_count = failure_count + 1, last_applied = CURRENT_TIMESTAMP
-                WHERE generalized_rule = ?
-                """,
-                (rule_text,),
-            )
-        conn.commit()
-        conn.close()
+    # ──────────────────────────────
+    # Semantic Deduplication
+    # ──────────────────────────────
+
+    def _find_similar_rule(self, cursor, rule_text: str) -> Optional[int]:
+        """Find an existing rule that is semantically similar to rule_text.
+
+        Uses token overlap similarity. Returns the ID of the similar rule or None.
+        """
+        cursor.execute(
+            """
+            SELECT id, generalized_rule FROM corrections
+            WHERE generalized_rule IS NOT NULL AND generalized_rule != ''
+            """
+        )
+        best_id = None
+        best_score = 0.0
+        threshold = 0.6
+
+        rule_tokens = set(self._tokenize(rule_text))
+        if not rule_tokens:
+            return None
+
+        for row_id, existing in cursor.fetchall():
+            existing_tokens = set(self._tokenize(existing))
+            if not existing_tokens:
+                continue
+
+            # Jaccard similarity
+            intersection = len(rule_tokens & existing_tokens)
+            union = len(rule_tokens | existing_tokens)
+            similarity = intersection / union if union > 0 else 0
+
+            if similarity > best_score and similarity >= threshold:
+                best_score = similarity
+                best_id = row_id
+
+        return best_id
+
+    def _tokenize(self, text: str) -> List[str]:
+        """Tokenize rule text for similarity comparison."""
+        # Lowercase, remove punctuation, split into meaningful words
+        cleaned = re.sub(r"[^\w\s]", " ", text.lower())
+        words = cleaned.split()
+        # Filter out stop words
+        stop_words = {"the", "a", "an", "in", "on", "at", "to", "for", "of", "and", "or", "is", "are", "be", "do", "not"}
+        return [w for w in words if len(w) > 2 and w not in stop_words]
 
     # ──────────────────────────────
     # Heuristic Generalizers
@@ -174,9 +342,6 @@ class FeedbackEngine:
 
     def _generalize_rule(self, field_path: str, original: str, edited: str) -> str:
         """Transform a literal diff into a reusable principle."""
-        orig_parsed = self._safe_parse(original)
-        edit_parsed = self._safe_parse(edited)
-
         # 1. Party filter FIRST: parties list shrinks, removed items contain titles
         if "parties" in field_path and self._is_party_filter(original, edited):
             return "In the parties list, include only organizational entities (companies, corporations, LLCs, partnerships). Remove individual officers, signatories, and attorneys."
@@ -219,6 +384,14 @@ class FeedbackEngine:
         if "key_facts" in field_path and ".statement" in field_path:
             return "Make factual statements precise and directly supported by evidence. Avoid vague or overly broad language."
 
+        # 11. Financial summary item added
+        if "financial_summary" in field_path and self._is_addition(original, edited):
+            return "Always include monetary amounts mentioned in the evidence in the financial_summary section with descriptions and citations."
+
+        # 12. Document summary refinement
+        if "document_summary" in field_path:
+            return "Provide a concise 1-2 sentence summary of what the document IS, based strictly on the evidence. Do not infer document type."
+
         # Fallback: try LLM generalization for complex cases
         llm_rule = self._llm_generalize(field_path, original, edited)
         if llm_rule:
@@ -228,7 +401,6 @@ class FeedbackEngine:
         field_name = field_path.split(".")[-1] if "." in field_path else field_path.split("[")[0]
         return f"When generating '{field_name}', use the exact value from the evidence. Do not modify or paraphrase."
 
-
     def _is_removal(self, original: str, edited: str) -> bool:
         """Check if original had content and edited removed it."""
         orig_val = original.strip().strip('"')
@@ -236,6 +408,15 @@ class FeedbackEngine:
         return (
             len(orig_val) > 10
             and (edit_val in ("", "null", "[]", "{}") or len(edit_val) < 3)
+        )
+
+    def _is_addition(self, original: str, edited: str) -> bool:
+        """Check if edited added content where original was empty."""
+        orig_val = original.strip().strip('"')
+        edit_val = edited.strip().strip('"')
+        return (
+            orig_val in ("", "null", "[]", "{}")
+            and len(edit_val) > 10
         )
 
     def _generalize_removal(self, field_path: str, original: str) -> str:
@@ -248,12 +429,13 @@ class FeedbackEngine:
             return "Do not include facts without supporting evidence citations. Every fact must be traceable to a specific evidence passage."
         if "dates" in field_path:
             return "Do not include dates that are not explicitly mentioned in the evidence. Remove inferred or assumed dates."
+        if "financial_summary" in field_path:
+            return "Only include monetary amounts that are explicitly stated in the evidence. Do not estimate or calculate amounts."
         return "Do not generate content without strong supporting evidence. Remove unsupported items."
 
     def _is_party_filter(self, original: str, edited: str) -> bool:
         """Check if parties list shrank and removed items contain titles."""
         try:
-            # Case 1: full list diff (both are lists)
             if original.startswith("[") and edited.startswith("["):
                 orig_list = json.loads(original)
                 edit_list = json.loads(edited)
@@ -262,7 +444,6 @@ class FeedbackEngine:
                 if len(edit_list) >= len(orig_list):
                     return False
                 removed = [item for item in orig_list if item not in edit_list]
-            # Case 2: single item removed from list (edited is empty/null)
             elif edited.strip().strip('"') in ("", "null", "[]", "{}"):
                 removed = [json.loads(original)] if original.startswith("{") else []
             else:
@@ -315,7 +496,6 @@ class FeedbackEngine:
             added = [item for item in edit_list if item not in orig_list]
             for item in added:
                 name = item.get("name", "") if isinstance(item, dict) else str(item)
-                # Check if name looks like a person (First Last, no corporate suffix)
                 if re.match(r"^[A-Z][a-z]+\s+[A-Z][a-z]+$", name):
                     return True
             return False
@@ -326,7 +506,7 @@ class FeedbackEngine:
         """Classify the type of edit."""
         if self._is_removal(original, edited):
             return "removal"
-        if self._is_removal(edited, original):
+        if self._is_addition(original, edited):
             return "addition"
         if self._is_evidence_correction(original, edited):
             return "evidence_fix"
@@ -338,13 +518,10 @@ class FeedbackEngine:
         """Validate that a rule is actionable and not too specific."""
         if not rule or len(rule) < 20 or len(rule) > 300:
             return False
-        # Reject rules containing document-specific temp filenames
         if re.search(r"tmp[a-z0-9]+\.(?:pdf|doc)", rule, re.IGNORECASE):
             return False
-        # Reject rules with specific chunk_ids
         if re.search(r"_p\d+_c\d+", rule):
             return False
-        # Reject rules that are just JSON blobs
         if rule.startswith("{") or rule.startswith("["):
             return False
         return True
@@ -382,14 +559,13 @@ Principle:"""
                 max_tokens=60,
             )
             principle = response.choices[0].message.content.strip().strip('"').strip("'")
-            # Clean up common prefixes
             principle = re.sub(r"^(Principle:|Rule:|The principle is:?\s*)", "", principle, flags=re.IGNORECASE)
             return principle
         except Exception:
             return ""
 
     # ──────────────────────────────
-    # Deep Diff (unchanged)
+    # Deep Diff
     # ──────────────────────────────
 
     def _deep_diff(

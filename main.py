@@ -90,6 +90,10 @@ async def generate_draft(query: str = Form("Generate a case fact summary")):
     """Generate a grounded draft from the uploaded document."""
     evidence = retriever.retrieve(query, top_k=5)
     rules = feedback_engine.get_rules(limit=3)
+
+    # Track which rules are about to be applied (for later effectiveness scoring)
+    feedback_engine.track_applied_rules(rules)
+
     draft = _get_generator().generate(query, evidence, correction_rules=rules)
 
     global _last_draft
@@ -113,12 +117,16 @@ async def submit_feedback(edited_draft: str = Form(...)):
     if not original:
         return {"status": "error", "message": "No draft to compare against"}
 
-    feedback_engine.capture_edit(original, edited)
+    result = feedback_engine.capture_edit(original, edited)
+    stats = feedback_engine.get_stats()
     new_rules = feedback_engine.get_rules(limit=3)
 
     return {
         "status": "success",
-        "rules_learned": len(new_rules),
+        "rules_learned": result["new_rules_learned"],
+        "total_diffs": result["total_diffs"],
+        "rules_scored": result["rules_scored"],
+        "effectiveness_pct": stats["effectiveness_pct"],
         "active_rules": new_rules,
     }
 

@@ -303,11 +303,16 @@ submitEditBtn.addEventListener('click', async () => {
         const res = await fetch('/feedback', { method: 'POST', body: formData });
         const data = await res.json();
 
+        const effText = data.effectiveness_pct !== null
+            ? `<span style="color:#2e7d32;font-weight:600;">${data.effectiveness_pct}%</span> rule effectiveness`
+            : `<span style="color:#666;">Not enough data yet</span>`;
+
         feedbackResult.innerHTML = `
-            <div style="background:#e8f5e9;padding:10px;border-radius:4px;">
+            <div style="background:#e8f5e9;padding:12px;border-radius:4px;margin-top:10px;">
                 <strong>Feedback captured!</strong><br>
-                Rules learned: ${data.rules_learned}<br>
-                Active rules:<br>
+                ${data.new_rules_learned} new rule(s) learned · ${data.total_diffs} change(s) detected<br>
+                ${data.rules_scored > 0 ? `${data.rules_scored} previous rule(s) scored · ` : ''}${effText}<br>
+                <strong>Active rules:</strong>
                 <ul>${data.active_rules.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
             </div>
         `;
