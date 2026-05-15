@@ -4,7 +4,6 @@ from typing import List, Tuple
 
 import fitz
 import pytesseract
-from pdf2image import convert_from_path
 from PIL import Image, ImageEnhance, ImageFilter
 
 from .models import ProcessedDocument, TextChunk, ExtractedEntity
