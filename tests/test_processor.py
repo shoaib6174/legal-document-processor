@@ -228,3 +228,60 @@ def test_process_text_file(processor, tmp_path):
     assert "ACME LLC" in result.raw_text
     assert len(result.chunks) > 0
     assert len(result.entities) >= 4  # date, amount, 2 parties, case number
+
+
+def test_extract_entities_individual_all_caps(processor):
+    """ALL CAPS individual names followed by ', an individual' should be extracted as parties."""
+    raw_text = "ELENA MARTINEZ, an individual residing at 450 Park Avenue."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    parties = [e for e in entities if e.type == "party"]
+
+    assert len(parties) == 1
+    assert parties[0].value == "ELENA MARTINEZ"
+
+
+def test_extract_entities_individual_with_title(processor):
+    """Title-prefixed individual names followed by ', an individual' should be extracted as parties."""
+    raw_text = "DR. AMANDA PARK, an individual (the 'Executive')."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    parties = [e for e in entities if e.type == "party"]
+
+    assert len(parties) == 1
+    assert parties[0].value == "DR. AMANDA PARK"
+
+
+def test_extract_entities_individual_does_not_match_org(processor):
+    """Individual patterns should not accidentally match organizational parties."""
+    raw_text = "NEXUS FINANCIAL SERVICES INC., a New York corporation."
+    chunks = [
+        TextChunk(
+            chunk_id="c1",
+            text=raw_text,
+            source_doc="test",
+            page_num=1,
+            confidence_score=1.0,
+        )
+    ]
+    entities = processor._extract_entities(raw_text, chunks)
+    parties = [e for e in entities if e.type == "party"]
+
+    assert len(parties) == 1
+    assert parties[0].value == "NEXUS FINANCIAL SERVICES INC"

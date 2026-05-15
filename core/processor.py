@@ -25,6 +25,15 @@ class DocumentProcessor:
         self.party_pattern = re.compile(
             rf"\b(?!({_titles})\b)[A-Z][A-Z&]*(?: +[A-Z][A-Z&]*)*? +(?:{_suffix})\b"
         )
+        # Individual parties explicitly labeled: "ELENA MARTINEZ, an individual"
+        # Negative lookbehind prevents matching after title prefixes like "Dr. "
+        self.individual_party_pattern = re.compile(
+            r"(?<!\.\s)\b([A-Z]{2,}(?:\s+[A-Z]{2,}){1,2})\s*,\s*an\s+individual\b"
+        )
+        self.individual_title_pattern = re.compile(
+            r"\b((?:Dr\.|Mr\.|Ms\.|Mrs\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*,\s*an\s+individual\b",
+            re.IGNORECASE,
+        )
         self.case_number_pattern = re.compile(
             r"\b(?:Case|No\.|#)\s*[:\-]?\s*([A-Z]{2,4}[-\s]?\d{2,4}[-\s]?\d{1,6})\b",
             re.IGNORECASE,
@@ -199,6 +208,34 @@ class DocumentProcessor:
         # Party names (ALL CAPS + company suffix)
         for match in self.party_pattern.finditer(raw_text):
             val = match.group()
+            key = ("party", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="party", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
+                    )
+                )
+
+        # Individual parties explicitly labeled (e.g., "ELENA MARTINEZ, an individual")
+        for match in self.individual_party_pattern.finditer(raw_text):
+            val = match.group(1)
+            key = ("party", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="party", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
+                    )
+                )
+
+        # Individual parties with title prefix (e.g., "DR. AMANDA PARK, an individual")
+        for match in self.individual_title_pattern.finditer(raw_text):
+            val = match.group(1)
             key = ("party", val)
             if key not in seen:
                 seen.add(key)
