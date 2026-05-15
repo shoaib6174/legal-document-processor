@@ -2,6 +2,16 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
+class CitationError(Exception):
+    """Raised when a draft cites non-existent chunk_ids."""
+    pass
+
+
+class HallucinationError(Exception):
+    """Raised when a draft contains unsupported facts not in uncertainties."""
+    pass
+
+
 class TextChunk(BaseModel):
     """A chunk of text extracted from a document with metadata."""
     chunk_id: str

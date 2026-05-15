@@ -1,107 +1,14 @@
 """Generate synthetic legal documents for testing the document processor."""
 
+import io
+import math
+import random
 from pathlib import Path
+
 import fitz  # pymupdf
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-
-SAMPLE_CONTRACT = """SERVICE AGREEMENT
-
-This Service Agreement ("Agreement") is entered into as of March 15, 2024,
-by and between:
-
-ACME INDUSTRIES LLC, a Delaware limited liability company ("Provider")
-and
-SMITH VENTURES INC., a California corporation ("Client")
-
-Case No. PSL-2024-0042
-
-1. SERVICES. Provider agrees to deliver consulting services related to
-   software development for a total fee of $125,000.
-
-2. TERM. The term of this Agreement shall commence on April 1, 2024 and
-   continue through March 31, 2025.
-
-3. LIABILITY. Provider's liability shall be limited to the amount paid
-   by Client under this Agreement. Provider shall not be liable for
-   indirect, incidental, or consequential damages exceeding $50,000.
-
-4. TERMINATION. Either party may terminate this Agreement with 30 days
-   written notice. Upon termination, Client shall pay for all services
-   rendered through the termination date.
-
-5. GOVERNING LAW. This Agreement shall be governed by the laws of the
-   State of Delaware.
-
-IN WITNESS WHEREOF, the parties have executed this Agreement as of the
-Effective Date.
-
-/s/ John Doe                    /s/ Jane Smith
-John Doe, CEO                   Jane Smith, CFO
-ACME INDUSTRIES LLC             SMITH VENTURES INC.
-"""
-
-SAMPLE_PLEADING = """IN THE SUPERIOR COURT OF THE STATE OF DELAWARE
-
-JAMES RICHARDSON,                    )
-                                     )
-    Plaintiff,                       )
-                                     )
-    v.                               )    Case No. PSL-2024-0089
-                                     )
-ATLANTIC CONSTRUCTION CORP.,         )
-                                     )
-    Defendant.                       )
-_____________________________________)
-
-PLAINTIFF'S COMPLAINT FOR BREACH OF CONTRACT
-
-COMES NOW the Plaintiff, James Richardson, by and through counsel, and
-for his Complaint against Defendant, Atlantic Construction Corp., states
-as follows:
-
-PARTIES
-
-1. Plaintiff James Richardson is an individual residing at 123 Main
-   Street, Wilmington, Delaware.
-
-2. Defendant Atlantic Construction Corp. is a Delaware corporation with
-   its principal place of business at 456 Commerce Blvd, Newark, Delaware.
-
-FACTUAL ALLEGATIONS
-
-3. On or about January 10, 2024, Plaintiff and Defendant entered into a
-   written Construction Contract (the "Contract") for renovation of
-   Plaintiff's residential property.
-
-4. The total contract price was $250,000, payable in installments.
-
-5. On February 15, 2024, Plaintiff paid the initial deposit of $75,000.
-
-6. Defendant failed to commence work by the agreed start date of
-   March 1, 2024.
-
-7. Despite repeated demands, Defendant has not performed and refuses to
-   return the deposit.
-
-COUNT I - BREACH OF CONTRACT
-
-8. Plaintiff incorporates by reference all preceding paragraphs.
-
-9. Defendant's failure to perform constitutes a material breach of the
-   Contract.
-
-10. As a result of Defendant's breach, Plaintiff has suffered damages in
-    the amount of $75,000 plus additional costs of $12,500.
-
-WHEREFORE, Plaintiff demands judgment against Defendant in the amount of
-$87,500, plus interest, costs, and attorney fees.
-
-Respectfully submitted this 15th day of April, 2024.
-
-/s/ Attorney Name
-COUNSEL FOR PLAINTIFF
-"""
+from document_templates import TEMPLATES
 
 
 def create_text_pdf(text: str, output_path: Path, title: str = "Document") -> None:
@@ -109,7 +16,6 @@ def create_text_pdf(text: str, output_path: Path, title: str = "Document") -> No
     doc = fitz.open()
     page = doc.new_page(width=612, height=792)  # Letter size
 
-    # Add text with proper formatting
     margin = 72
     y = 72
     line_height = 14
@@ -126,31 +32,123 @@ def create_text_pdf(text: str, output_path: Path, title: str = "Document") -> No
     print(f"Created text PDF: {output_path}")
 
 
-def create_scanned_pdf(text: str, output_path: Path) -> None:
-    """Create a scanned-style PDF by rendering text as images."""
+def _apply_skew(img: Image.Image, max_angle: float = 2.0) -> Image.Image:
+    """Apply slight rotation to simulate skewed scan."""
+    angle = random.uniform(-max_angle, max_angle)
+    return img.rotate(angle, resample=Image.BICUBIC, fillcolor="white")
+
+
+def _apply_blur(img: Image.Image) -> Image.Image:
+    """Apply Gaussian blur to simulate out-of-focus scan."""
+    if random.random() < 0.5:
+        radius = random.uniform(0.3, 0.8)
+        return img.filter(ImageFilter.GaussianBlur(radius=radius))
+    return img
+
+
+def _apply_salt_and_pepper(img: Image.Image, density: float = 0.002) -> Image.Image:
+    """Add salt-and-pepper noise."""
+    pixels = img.load()
+    width, height = img.size
+    num_noise = int(width * height * density)
+    for _ in range(num_noise):
+        x = random.randint(0, width - 1)
+        y = random.randint(0, height - 1)
+        if random.random() < 0.5:
+            pixels[x, y] = (0, 0, 0)  # black (pepper)
+        else:
+            pixels[x, y] = (255, 255, 255)  # white (salt)
+    return img
+
+
+def _apply_random_noise(img: Image.Image) -> Image.Image:
+    """Apply subtle random noise to simulate scanner sensor noise."""
+    pixels = img.load()
+    width, height = img.size
+    for _ in range(800):
+        x = random.randint(0, width - 1)
+        y = random.randint(0, height - 1)
+        r, g, b = pixels[x, y]
+        noise = random.randint(-12, 12)
+        pixels[x, y] = (
+            max(0, min(255, r + noise)),
+            max(0, min(255, g + noise)),
+            max(0, min(255, b + noise)),
+        )
+    return img
+
+
+def _add_watermark(img: Image.Image, text: str = "CONFIDENTIAL") -> Image.Image:
+    """Add a diagonal watermark."""
+    if random.random() < 0.7:
+        overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(overlay)
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 48)
+        except (OSError, IOError):
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        # Draw diagonally across the page
+        for i in range(-2, 4):
+            y_pos = i * 200 + 100
+            draw.text((100, y_pos), text, font=font, fill=(200, 200, 200, 80))
+        img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    return img
+
+
+def _add_header_footer(
+    img: Image.Image, page_num: int, total_pages: int, doc_title: str = ""
+) -> Image.Image:
+    """Add header and footer text."""
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 9)
+    except (OSError, IOError):
+        font = ImageFont.load_default()
+
+    width, height = img.size
+    # Header
+    header_text = doc_title if doc_title else ""
+    if header_text:
+        draw.text((50, 20), header_text, fill=(128, 128, 128), font=font)
+    # Footer with page number
+    footer_text = f"Page {page_num} of {total_pages}"
+    bbox = draw.textbbox((0, 0), footer_text, font=font)
+    text_width = bbox[2] - bbox[0]
+    draw.text((width - 50 - text_width, height - 30), footer_text, fill=(128, 128, 128), font=font)
+    return img
+
+
+def create_scanned_pdf(
+    text: str, output_path: Path, title: str = "Document", add_watermark: bool = True
+) -> None:
+    """Create a scanned-style PDF by rendering text as images with realistic degradation."""
     lines = text.split("\n")
-    lines_per_page = 45
-    margin = 50
-    line_height = 18
+    lines_per_page = 42
+    margin = 60
+    line_height = 16
     page_width = 612
     page_height = 792
 
     doc = fitz.open()
+    total_pages = math.ceil(len(lines) / lines_per_page)
 
-    for page_start in range(0, len(lines), lines_per_page):
+    for page_idx in range(total_pages):
+        page_start = page_idx * lines_per_page
         page_lines = lines[page_start : page_start + lines_per_page]
-        page_text = "\n".join(page_lines)
 
-        # Render page as image
-        img_height = page_height
-        img = Image.new("RGB", (page_width, img_height), color="white")
+        img = Image.new("RGB", (page_width, page_height), color="white")
         draw = ImageDraw.Draw(img)
 
         try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12)
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 11)
         except (OSError, IOError):
             try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+                font = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11
+                )
             except (OSError, IOError):
                 font = ImageFont.load_default()
 
@@ -159,27 +157,22 @@ def create_scanned_pdf(text: str, output_path: Path) -> None:
             draw.text((margin, y), line, fill="black", font=font)
             y += line_height
 
-        # Add slight noise to simulate scan artifacts
-        import random
-        pixels = img.load()
-        for _ in range(500):
-            x = random.randint(0, page_width - 1)
-            y = random.randint(0, img_height - 1)
-            r, g, b = pixels[x, y]
-            noise = random.randint(-10, 10)
-            pixels[x, y] = (
-                max(0, min(255, r + noise)),
-                max(0, min(255, g + noise)),
-                max(0, min(255, b + noise)),
-            )
+        # Add header/footer
+        img = _add_header_footer(img, page_idx + 1, total_pages, title)
 
-        # Save image to temporary bytes
-        import io
+        # Apply degradation effects
+        img = _apply_random_noise(img)
+        img = _apply_salt_and_pepper(img, density=0.0015)
+        img = _apply_skew(img, max_angle=1.5)
+        img = _apply_blur(img)
+
+        if add_watermark:
+            img = _add_watermark(img, random.choice(["CONFIDENTIAL", "DRAFT", " attorney -client privilege "]))
+
         img_bytes = io.BytesIO()
         img.save(img_bytes, format="PNG")
         img_bytes.seek(0)
 
-        # Add image to PDF page
         page = doc.new_page(width=page_width, height=page_height)
         rect = fitz.Rect(0, 0, page_width, page_height)
         page.insert_image(rect, stream=img_bytes.read())
@@ -193,15 +186,14 @@ def main():
     output_dir = Path(__file__).parent / "synthetic_docs"
     output_dir.mkdir(exist_ok=True)
 
-    # Clean text PDFs
-    create_text_pdf(SAMPLE_CONTRACT, output_dir / "contract_clean.pdf", "Service Agreement")
-    create_text_pdf(SAMPLE_PLEADING, output_dir / "pleading_clean.pdf", "Complaint")
+    for name, template in TEMPLATES.items():
+        # Clean text PDF
+        create_text_pdf(template, output_dir / f"{name}_clean.pdf", title=name.replace("_", " ").title())
+        # Scanned/image PDF with degradation
+        create_scanned_pdf(template, output_dir / f"{name}_scanned.pdf", title=name.replace("_", " ").title())
 
-    # Scanned/image PDFs (tests OCR fallback)
-    create_scanned_pdf(SAMPLE_CONTRACT, output_dir / "contract_scanned.pdf")
-    create_scanned_pdf(SAMPLE_PLEADING, output_dir / "pleading_scanned.pdf")
-
-    print(f"\nGenerated {len(list(output_dir.glob('*.pdf')))} synthetic PDFs in {output_dir}")
+    count = len(list(output_dir.glob("*.pdf")))
+    print(f"\nGenerated {count} synthetic PDFs in {output_dir}")
 
 
 if __name__ == "__main__":
