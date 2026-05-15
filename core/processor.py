@@ -44,7 +44,7 @@ class DocumentProcessor:
             raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
             chunks = self._chunk_text(raw_text, file_path.name, 1, 1.0)
 
-        entities = self._extract_entities(chunks)
+        entities = self._extract_entities(raw_text, chunks)
 
         return ProcessedDocument(
             source_path=str(file_path),
@@ -163,60 +163,94 @@ class DocumentProcessor:
 
         return chunks
 
-    def _extract_entities(self, chunks: List[TextChunk]) -> List[ExtractedEntity]:
-        """Extract dates, amounts, parties, and case numbers from chunks."""
+    def _extract_entities(self, raw_text: str, chunks: List[TextChunk]) -> List[ExtractedEntity]:
+        """Extract dates, amounts, parties, and case numbers from raw text with positions."""
         entities = []
         seen = set()
 
-        for chunk in chunks:
-            # Dates
-            for match in self.date_pattern.finditer(chunk.text):
-                val = match.group()
-                key = ("date", val)
-                if key not in seen:
-                    seen.add(key)
-                    entities.append(
-                        ExtractedEntity(
-                            type="date", value=val, source_chunk_id=chunk.chunk_id
-                        )
+        # Dates
+        for match in self.date_pattern.finditer(raw_text):
+            val = match.group()
+            key = ("date", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="date", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
                     )
+                )
 
-            # Dollar amounts
-            for match in self.amount_pattern.finditer(chunk.text):
-                val = match.group()
-                key = ("amount", val)
-                if key not in seen:
-                    seen.add(key)
-                    entities.append(
-                        ExtractedEntity(
-                            type="amount", value=val, source_chunk_id=chunk.chunk_id
-                        )
+        # Dollar amounts
+        for match in self.amount_pattern.finditer(raw_text):
+            val = match.group()
+            key = ("amount", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="amount", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
                     )
+                )
 
-            # Party names (ALL CAPS + company suffix)
-            for match in self.party_pattern.finditer(chunk.text):
-                val = match.group()
-                key = ("party", val)
-                if key not in seen:
-                    seen.add(key)
-                    entities.append(
-                        ExtractedEntity(
-                            type="party", value=val, source_chunk_id=chunk.chunk_id
-                        )
+        # Party names (ALL CAPS + company suffix)
+        for match in self.party_pattern.finditer(raw_text):
+            val = match.group()
+            key = ("party", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="party", value=val, source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
                     )
+                )
 
-            # Case numbers
-            for match in self.case_number_pattern.finditer(chunk.text):
-                val = match.group(1)
-                key = ("case_number", val)
-                if key not in seen:
-                    seen.add(key)
-                    entities.append(
-                        ExtractedEntity(
-                            type="case_number",
-                            value=val,
-                            source_chunk_id=chunk.chunk_id,
-                        )
+        # Case numbers
+        for match in self.case_number_pattern.finditer(raw_text):
+            val = match.group(1)
+            key = ("case_number", val)
+            if key not in seen:
+                seen.add(key)
+                chunk_id = self._find_chunk_for_offset(match.start(), chunks)
+                entities.append(
+                    ExtractedEntity(
+                        type="case_number",
+                        value=val,
+                        source_chunk_id=chunk_id,
+                        start=match.start(), end=match.end()
                     )
+                )
 
         return entities
+
+    def _find_chunk_for_offset(self, offset: int, chunks: List[TextChunk]) -> str:
+        """Find which chunk contains the given character offset in raw_text."""
+        pos = 0
+        for chunk in chunks:
+            chunk_len = len(chunk.text)
+            if pos <= offset < pos + chunk_len:
+                return chunk.chunk_id
+            pos += chunk_len - 50  # account for overlap
+        return chunks[0].chunk_id if chunks else "unknown"
+
+    def render_pages(self, file_path: Path, output_dir: Path) -> List[str]:
+        """Render each PDF page to a PNG image. Returns list of relative filenames."""
+        doc = fitz.open(file_path)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        rendered = []
+        for i in range(len(doc)):
+            page = doc[i]
+            pix = page.get_pixmap(dpi=150)
+            img_path = output_dir / f"page_{i + 1}.png"
+            pix.save(str(img_path))
+            rendered.append(f"page_{i + 1}.png")
+
+        doc.close()
+        return rendered

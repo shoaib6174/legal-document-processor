@@ -26,6 +26,8 @@ class ExtractedEntity(BaseModel):
     type: str  # "date", "amount", "party", "case_number"
     value: str
     source_chunk_id: str
+    start: int = 0  # character offset in raw_text
+    end: int = 0    # character offset in raw_text
 
 
 class ProcessedDocument(BaseModel):

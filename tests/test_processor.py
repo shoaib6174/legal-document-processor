@@ -35,16 +35,17 @@ def test_chunk_text_empty(processor):
 
 
 def test_extract_entities_dates(processor):
+    raw_text = "The meeting was on 03/15/2024 and the deadline is 2024-06-01."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="The meeting was on 03/15/2024 and the deadline is 2024-06-01.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     dates = [e for e in entities if e.type == "date"]
 
     assert len(dates) == 2
@@ -53,16 +54,17 @@ def test_extract_entities_dates(processor):
 
 
 def test_extract_entities_amounts(processor):
+    raw_text = "The settlement was $1,250,000 and fees were $25,000."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="The settlement was $1,250,000 and fees were $25,000.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     amounts = [e for e in entities if e.type == "amount"]
 
     assert len(amounts) == 2
@@ -71,16 +73,17 @@ def test_extract_entities_amounts(processor):
 
 
 def test_extract_entities_parties(processor):
+    raw_text = "ACME INDUSTRIES LLC and Smith Corp are parties to this agreement."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="ACME INDUSTRIES LLC and Smith Corp are parties to this agreement.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     parties = [e for e in entities if e.type == "party"]
 
     assert len(parties) >= 1
@@ -89,16 +92,17 @@ def test_extract_entities_parties(processor):
 
 def test_extract_entities_written_dates(processor):
     """Written-out month names should be extracted."""
+    raw_text = "The agreement was signed on March 15, 2024 and reviewed on January 10, 2024."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="The agreement was signed on March 15, 2024 and reviewed on January 10, 2024.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     dates = [e for e in entities if e.type == "date"]
 
     assert len(dates) == 2
@@ -108,16 +112,17 @@ def test_extract_entities_written_dates(processor):
 
 def test_extract_entities_party_with_trailing_punctuation(processor):
     """Company suffixes followed by punctuation (e.g., Inc., Corp.) should match correctly."""
+    raw_text = "SMITH VENTURES INC. and ATLANTIC CONSTRUCTION CORP., are defendants."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="SMITH VENTURES INC. and ATLANTIC CONSTRUCTION CORP., are defendants.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     parties = [e for e in entities if e.type == "party"]
 
     assert len(parties) == 2
@@ -127,16 +132,17 @@ def test_extract_entities_party_with_trailing_punctuation(processor):
 
 def test_extract_entities_party_blocks_titles(processor):
     """Titles like CEO or CFO should not be absorbed into party names."""
+    raw_text = "John Doe, CEO and ACME INDUSTRIES LLC are parties."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="John Doe, CEO and ACME INDUSTRIES LLC are parties.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     parties = [e for e in entities if e.type == "party"]
 
     # Only ACME INDUSTRIES LLC should match; "CEO" must not be part of a party name
@@ -146,16 +152,17 @@ def test_extract_entities_party_blocks_titles(processor):
 
 def test_extract_entities_party_two_on_same_line(processor):
     """Two company names on the same line should be extracted as two separate parties."""
+    raw_text = "ACME INDUSTRIES LLC             SMITH VENTURES INC."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="ACME INDUSTRIES LLC             SMITH VENTURES INC.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     parties = [e for e in entities if e.type == "party"]
 
     assert len(parties) == 2
@@ -164,16 +171,17 @@ def test_extract_entities_party_two_on_same_line(processor):
 
 
 def test_extract_entities_case_numbers(processor):
+    raw_text = "Case No. PSL-2024-0017 involves property dispute."
     chunks = [
         TextChunk(
             chunk_id="c1",
-            text="Case No. PSL-2024-0017 involves property dispute.",
+            text=raw_text,
             source_doc="test",
             page_num=1,
             confidence_score=1.0,
         )
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     case_numbers = [e for e in entities if e.type == "case_number"]
 
     assert len(case_numbers) == 1
@@ -182,6 +190,7 @@ def test_extract_entities_case_numbers(processor):
 
 def test_extract_entities_deduplication(processor):
     """Same entity appearing in multiple chunks should only be extracted once."""
+    raw_text = "The date is 03/15/2024. As mentioned, 03/15/2024 is important."
     chunks = [
         TextChunk(
             chunk_id="c1",
@@ -198,7 +207,7 @@ def test_extract_entities_deduplication(processor):
             confidence_score=1.0,
         ),
     ]
-    entities = processor._extract_entities(chunks)
+    entities = processor._extract_entities(raw_text, chunks)
     dates = [e for e in entities if e.type == "date"]
 
     assert len(dates) == 1

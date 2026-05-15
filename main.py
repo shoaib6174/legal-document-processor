@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.feedback import FeedbackEngine
@@ -46,17 +46,34 @@ async def upload_document(file: UploadFile = File(...)):
         retriever.clear()
         retriever.index(doc.chunks)
 
+        # Render PDF pages to images
+        rendered_dir = Path("./data/rendered") / file.filename
+        page_files = processor.render_pages(tmp_path, rendered_dir)
+
         global _last_doc_id
         _last_doc_id = file.filename
 
         return {
             "filename": file.filename,
             "chunks": len(doc.chunks),
-            "entities": [{"type": e.type, "value": e.value} for e in doc.entities],
-            "raw_text": doc.raw_text[:2000] + "..." if len(doc.raw_text) > 2000 else doc.raw_text,
+            "entities": [
+                {"type": e.type, "value": e.value, "start": e.start, "end": e.end}
+                for e in doc.entities
+            ],
+            "pages": len(page_files),
+            "raw_text": doc.raw_text,
         }
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+@app.get("/rendered/{doc_id}/{page_file}")
+async def get_rendered_page(doc_id: str, page_file: str):
+    """Serve a rendered page image."""
+    img_path = Path("./data/rendered") / doc_id / page_file
+    if img_path.exists():
+        return FileResponse(img_path)
+    return {"error": "Not found"}
 
 
 @app.post("/generate")
