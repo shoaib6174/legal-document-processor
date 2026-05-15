@@ -146,11 +146,15 @@ function renderChunks(chunks) {
                           chunk.confidence_score >= 0.7 ? 'chunk-confidence-medium' : 'chunk-confidence-low';
         const confLabel = chunk.confidence_score >= 0.9 ? 'HIGH' :
                           chunk.confidence_score >= 0.7 ? 'MEDIUM' : 'LOW';
+        const methodBadge = chunk.retrieval_method ?
+            `<span class="method-badge method-${chunk.retrieval_method}">${chunk.retrieval_method}</span>` : '';
+        const scoreBadge = chunk.score !== undefined ?
+            `<span class="score-badge">${chunk.score.toFixed(3)}</span>` : '';
         return `
             <div class="chunk-card" data-chunk-id="${chunk.chunk_id}">
                 <div class="chunk-header">
                     <span class="chunk-id">${chunk.chunk_id}</span>
-                    <span class="chunk-meta">page ${chunk.page_num} · <span class="${confClass}">${confLabel}</span></span>
+                    <span class="chunk-meta">page ${chunk.page_num} · <span class="${confClass}">${confLabel}</span> ${methodBadge} ${scoreBadge}</span>
                 </div>
                 <div class="chunk-text">${escapeHtml(chunk.text)}</div>
             </div>
@@ -259,7 +263,9 @@ async function generateDraft() {
             chunk_id: e.chunk_id,
             text: e.text,
             page_num: e.page_num,
-            confidence_score: 1.0  // Evidence chunks are from processed doc
+            confidence_score: 1.0,
+            retrieval_method: e.retrieval_method,
+            score: e.score
         }));
         renderChunks(currentChunks);
 
@@ -269,6 +275,20 @@ async function generateDraft() {
 
         // Pre-populate JSON editor for feedback
         draftEditor.value = currentDraftRaw;
+
+        // Show grounding score banner
+        const existingGrounding = draftSection.querySelector('.grounding-banner');
+        if (existingGrounding) existingGrounding.remove();
+        if (data.grounding && data.grounding.overall !== undefined) {
+            const g = data.grounding.overall;
+            const gColor = g >= 0.7 ? '#2e7d32' : g >= 0.5 ? '#ef6c00' : '#c62828';
+            const gLabel = g >= 0.7 ? 'Strong' : g >= 0.5 ? 'Moderate' : 'Weak';
+            draftSection.insertAdjacentHTML('afterbegin', `
+                <div class="grounding-banner" style="background:#e3f2fd;padding:10px;margin-bottom:10px;border-radius:4px;border-left:4px solid #1976d2;">
+                    <strong>Grounding check:</strong> ${gLabel} — ${(g * 100).toFixed(0)}% of facts are semantically supported by evidence
+                </div>
+            `);
+        }
 
         // Show applied rules
         const existingRules = renderedDraft.querySelector('.rules-banner');

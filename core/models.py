@@ -45,6 +45,7 @@ class RetrievedEvidence(BaseModel):
     source_doc: str
     page_num: int
     score: float
+    retrieval_method: str = "hybrid"  # "dense", "sparse", or "hybrid"
 
 
 class Party(BaseModel):

@@ -8,6 +8,26 @@ from sentence_transformers import SentenceTransformer
 from .models import RetrievedEvidence, TextChunk
 
 
+# Legal synonym expansion for improved recall
+_QUERY_EXPANSIONS = {
+    "breach": ["breach", "violation", "failure to perform", "non-compliance"],
+    "contract": ["contract", "agreement", "obligation", "terms"],
+    "damages": ["damages", "compensation", "remedy", "losses", "restitution"],
+    "liability": ["liability", "responsibility", "accountable", "at fault"],
+    "plaintiff": ["plaintiff", "complainant", "petitioner", "claimant"],
+    "defendant": ["defendant", "respondent", "accused", "opposing party"],
+    "settlement": ["settlement", "resolution", "accord", "compromise"],
+    "discovery": ["discovery", "disclosure", "production", "interrogatory"],
+    "employment": ["employment", "hire", "engagement", "work", "position"],
+    "termination": ["termination", "firing", "dismissal", "severance", "end of employment"],
+    "merger": ["merger", "acquisition", "consolidation", "purchase", "takeover"],
+    "confidential": ["confidential", "proprietary", "trade secret", "non-disclosure"],
+    "indemnity": ["indemnity", "indemnification", "hold harmless", "reimbursement"],
+    "warranty": ["warranty", "guarantee", "representation", "assurance"],
+    "injunction": ["injunction", "restraining order", "equitable relief", "prohibition"],
+}
+
+
 class EvidenceRetriever:
     """Hybrid dense + sparse retrieval with Reciprocal Rank Fusion."""
 
@@ -51,10 +71,32 @@ class EvidenceRetriever:
         self.bm25 = BM25Okapi(self.tokenized_corpus)
         self.chunk_map = {c.chunk_id: c for c in chunks}
 
-    def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedEvidence]:
-        """Hybrid retrieval with RRF fusion of dense + sparse rankings."""
+    def _expand_query(self, query: str) -> str:
+        """Expand query with legal synonyms to improve recall."""
+        query_lower = query.lower()
+        expanded_terms = [query]
+
+        for keyword, synonyms in _QUERY_EXPANSIONS.items():
+            if keyword in query_lower:
+                # Add synonyms not already in query
+                for syn in synonyms:
+                    if syn.lower() not in query_lower:
+                        expanded_terms.append(syn)
+
+        return " ".join(expanded_terms)
+
+    def retrieve(self, query: str, top_k: int = 5, use_expansion: bool = True) -> List[RetrievedEvidence]:
+        """Hybrid retrieval with RRF fusion of dense + sparse rankings.
+
+        Args:
+            query: The search query
+            top_k: Number of results to return
+            use_expansion: If True, expand query with legal synonyms for better recall
+        """
+        search_query = self._expand_query(query) if use_expansion else query
+
         # Dense search
-        query_embedding = self.encoder.encode(query).tolist()
+        query_embedding = self.encoder.encode(search_query).tolist()
         dense_results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k * 2,
@@ -68,7 +110,7 @@ class EvidenceRetriever:
         # Sparse search
         sparse_ranking: dict[str, int] = {}
         if self.bm25 and self.tokenized_corpus:
-            tokenized_query = query.lower().split()
+            tokenized_query = search_query.lower().split()
             bm25_scores = self.bm25.get_scores(tokenized_query)
             import numpy as np
 
@@ -99,6 +141,16 @@ class EvidenceRetriever:
         for chunk_id in sorted_ids:
             chunk = self.chunk_map.get(chunk_id)
             if chunk:
+                # Determine which retrieval methods found this chunk
+                in_dense = chunk_id in dense_ranking
+                in_sparse = chunk_id in sparse_ranking
+                if in_dense and in_sparse:
+                    method = "hybrid"
+                elif in_dense:
+                    method = "dense"
+                else:
+                    method = "sparse"
+
                 results.append(
                     RetrievedEvidence(
                         chunk_id=chunk_id,
@@ -106,6 +158,7 @@ class EvidenceRetriever:
                         source_doc=chunk.source_doc,
                         page_num=chunk.page_num,
                         score=fused_scores[chunk_id],
+                        retrieval_method=method,
                     )
                 )
 

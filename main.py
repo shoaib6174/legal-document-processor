@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core.feedback import FeedbackEngine
 from core.generator import DraftGenerator
+from core.grounding import GroundingVerifier
 from core.processor import DocumentProcessor
 from core.retrieval import EvidenceRetriever
 
@@ -96,6 +97,10 @@ async def generate_draft(query: str = Form("Generate a case fact summary")):
 
     draft = _get_generator().generate(query, evidence, correction_rules=rules)
 
+    # Compute grounding scores for display
+    verifier = GroundingVerifier()
+    grounding = verifier.get_grounding_scores(draft, evidence)
+
     global _last_draft
     _last_draft = draft.model_dump()
 
@@ -105,6 +110,7 @@ async def generate_draft(query: str = Form("Generate a case fact summary")):
         "draft_markdown": draft.to_markdown(),
         "evidence": [e.model_dump() for e in evidence],
         "rules_applied": rules,
+        "grounding": grounding,
     }
 
 

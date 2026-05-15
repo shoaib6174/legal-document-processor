@@ -4,6 +4,7 @@ from typing import List
 
 from groq import Groq
 
+from .grounding import GroundingVerifier
 from .models import CaseFactSummary, CitationError, RetrievedEvidence
 
 
@@ -67,6 +68,12 @@ class DraftGenerator:
                     stage1_analysis,
                 )
                 self._validate_output(draft, valid_chunk_ids)
+
+                # Post-generation grounding verification:
+                # Ensure every fact is semantically supported by evidence
+                verifier = GroundingVerifier()
+                draft = verifier.verify(draft, evidence)
+
                 return draft
             except (json.JSONDecodeError, CitationError) as e:
                 if attempt == max_retries:
