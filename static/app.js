@@ -23,7 +23,6 @@ const modalTitle = document.getElementById('modalTitle');
 const modalMeta = document.getElementById('modalMeta');
 const modalText = document.getElementById('modalText');
 const structuredEditor = document.getElementById('structuredEditor');
-const draftEditor = document.getElementById('draftEditor');
 
 let currentDraft = null;
 let currentDraftRaw = null;
