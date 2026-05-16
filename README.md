@@ -10,11 +10,15 @@ Built for the Pearson Specter Litt AI Engineer take-home assessment.
 
 1. **Process** — Extracts text from PDFs and images using hybrid OCR (native text extraction + Tesseract fallback for scanned pages). Sentence-aware chunking ensures no sentence is split across chunks. Extracts entities (dates, amounts, parties, case numbers, case citations, statute citations, court names, judge names) and scores each chunk for OCR confidence.
 
-2. **Retrieve** — Uses hybrid search (dense embeddings via ChromaDB + sparse BM25 + Reciprocal Rank Fusion) with legal query expansion to find the most relevant evidence passages. Every retrieved passage carries a `chunk_id` so its source can be traced.
+2. **Index** — Embeds chunks using sentence-transformers and stores them in ChromaDB with BM25 sparse indexing. Metadata includes source document, page number, and OCR confidence.
 
-3. **Generate** — Two-stage generation: first analyzes evidence, then produces a structured `CaseFactSummary` JSON with parties, dates, claims, key facts, document summary, financial summary, and uncertainties. Post-generation semantic grounding verification catches hallucinations that citation validation misses.
+3. **Retrieve** — Uses hybrid search (dense embeddings via ChromaDB + sparse BM25 + Reciprocal Rank Fusion) with legal query expansion to find the most relevant evidence passages. Every retrieved passage carries a `chunk_id` so its source can be traced.
 
-4. **Learn** — Captures operator edits via a diff engine, extracts reusable correction rules with 12 heuristic generalizers + LLM fallback, scores rule effectiveness, and injects the best rules into future generation prompts.
+4. **Generate** — Two-stage generation: first analyzes evidence, then produces a structured `CaseFactSummary` JSON with parties, dates, claims, key facts, document summary, financial summary, and uncertainties.
+
+5. **Verify** — Post-generation semantic grounding check compares each fact against its cited evidence. Facts below the similarity threshold are moved to `uncertainties` with a `[Grounding check]` prefix.
+
+6. **Learn** — Captures operator edits via a diff engine, extracts reusable correction rules with 12 heuristic generalizers + LLM fallback, scores rule effectiveness, and injects the best rules into future generation prompts.
 
 ## Prerequisites
 
@@ -79,7 +83,7 @@ Open `http://localhost:8000` in a browser. The UI supports:
 - Color-coded entity highlighting in extracted text
 - Auto-generated Case Fact Summary with clickable citations
 - Grounding score banner showing semantic support strength
-- Inline JSON editor for reviewing and editing drafts
+- Structured visual editor with JSON toggle for reviewing and editing drafts
 - Submitting edits to train the system's correction rules
 - Retrieval method badges (dense, sparse, hybrid) and RRF fusion scores
 
@@ -139,9 +143,10 @@ Creates clean-text and scanned/image PDFs in `evaluation/synthetic_docs/` for ma
 
 ```
 .
-├── main.py                       # FastAPI app with /upload, /generate, /feedback
+├── main.py                       # FastAPI app with /upload, /generate, /feedback, /rendered
 ├── requirements.txt              # Python dependencies
 ├── core/
+│   ├── __init__.py
 │   ├── models.py                 # Pydantic data models
 │   ├── processor.py              # DocumentProcessor (OCR, sentence-aware chunking, entity extraction, deskewing)
 │   ├── retrieval.py              # EvidenceRetriever (ChromaDB + BM25 + RRF + query expansion)
@@ -149,6 +154,7 @@ Creates clean-text and scanned/image PDFs in `evaluation/synthetic_docs/` for ma
 │   ├── feedback.py               # FeedbackEngine (SQLite + rule extraction + effectiveness scoring)
 │   └── grounding.py              # GroundingVerifier (post-generation semantic verification)
 ├── tests/
+│   ├── __init__.py
 │   ├── test_processor.py         # 22 tests for chunking, entities, OCR
 │   ├── test_retrieval.py         # 3 tests for hybrid search
 │   ├── test_generator.py         # 3 tests for prompt assembly and JSON parsing
@@ -156,10 +162,17 @@ Creates clean-text and scanned/image PDFs in `evaluation/synthetic_docs/` for ma
 │   └── test_feedback_improvement.py  # 5 end-to-end tests for feedback loop
 ├── evaluation/
 │   ├── generate_samples.py       # Creates synthetic PDFs
+│   ├── document_templates.py     # Text templates for synthetic document generation
+│   ├── evaluate.py               # Evaluation script and rubric scoring
 │   └── synthetic_docs/           # Generated test files
 ├── static/
 │   ├── index.html                # Web UI with split-screen PDF viewer
 │   └── app.js                    # Frontend logic with entity highlighting
+├── docs/
+│   ├── architecture-cover.html   # Single-page technical architecture diagram
+│   ├── EDIT_SESSION.md           # Feedback loop walkthrough
+│   ├── RUBRIC_EVALUATION.md      # Self-assessment against rubric
+│   └── SUBMISSION.md             # Submission notes
 ├── ARCHITECTURE.md               # Full system design with tradeoffs
 ├── ASSESSMENT.md                 # Original take-home requirements and rubric
 └── README.md                     # This file
@@ -167,9 +180,9 @@ Creates clean-text and scanned/image PDFs in `evaluation/synthetic_docs/` for ma
 
 ## Screenshot Gallery
 
-| Initial Upload | After Processing | Full Pipeline | Final Draft |
+| Initial Upload | After Processing | Full Pipeline | Edit Panel |
 |---|---|---|---|
-| ![Initial](docs/screenshots/ui_initial.png) | ![After Upload](docs/screenshots/ui_after_upload.png) | ![Full](docs/screenshots/ui_full.png) | ![Final](docs/screenshots/ui_final.png) |
+| ![Initial](docs/screenshots/ui_initial.png) | ![After Upload](docs/screenshots/ui_after_upload.png) | ![Full](docs/screenshots/ui_full.png) | ![Edit Panel](docs/screenshots/ui_edit_panel.png) |
 
 ## Edit Session Demo
 
